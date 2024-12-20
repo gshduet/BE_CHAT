@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 
 const socket = new WebSocket("ws://127.0.0.1:8000/ws");
 
@@ -8,7 +8,13 @@ const Game = () => {
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState("");
 
+  const lastKeyPressTime = useRef(0);
+
   const handleKeyPress = (event) => {
+    const now = Date.now();
+    if (now - lastKeyPressTime.current < 100) return; // 100ms 제한
+    lastKeyPressTime.current = now;
+
     let newPosition = { ...position };
     if (event.key === "w") newPosition.y -= 1;
     if (event.key === "s") newPosition.y += 1;
@@ -25,7 +31,8 @@ const Game = () => {
   };
 
   useEffect(() => {
-    window.addEventListener("keydown", handleKeyPress);
+    const throttledKeyPress = (event) => handleKeyPress(event);
+    window.addEventListener("keydown", throttledKeyPress);
 
     socket.onmessage = (event) => {
       const data = JSON.parse(event.data);
@@ -37,7 +44,7 @@ const Game = () => {
     };
 
     return () => {
-      window.removeEventListener("keydown", handleKeyPress);
+      window.removeEventListener("keydown", throttledKeyPress);
       socket.close();
     };
   }, []);
