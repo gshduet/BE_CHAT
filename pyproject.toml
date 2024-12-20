@@ -1,0 +1,21 @@
+[tool.poetry]
+name = "chat"
+version = "0.1.0"
+description = ""
+authors = ["Your Name <you@example.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+fastapi = {extras = ["standard"], version = "^0.115.6"}
+sqlmodel = "^0.0.22"
+psycopg2-binary = "^2.9.10"
+pyjwt = "^2.10.1"
+pytest = "^8.3.4"
+pydantic-core = "^2.27.2"
+bcrypt = "^4.2.1"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
