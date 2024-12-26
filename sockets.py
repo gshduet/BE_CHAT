@@ -21,22 +21,39 @@ clients = {'user1': {'img_url': "https://i.imgur", 'room_id': 'floor07'}}
 @sio_server.event
 async def connect(sid, environ):
     print(f'{sid}: connected')
-    rooms['floor07'].append({'client_id': sid, 'img_url': "https://i.imgur"})
-    print(rooms)
-    print(f'{sid}: joined floor07')
+    if 'floor07' in rooms:
+        rooms['floor07'].append({'client_id': sid, 'img_url': "https://i.imgur"})
+        print(rooms)
+        print(f'{sid}: join floor07')
+    else:
+        print(f'Error: Room floor07 does not exist.')
 
 @sio_server.event
 async def CS_CHAT(sid, data):
+    # 데이터 유효성 검사
+    if not isinstance(data, dict):
+        print(f'Error: Invalid data format: {data}')
+        return
+
     room_id = data.get('room_id')
     user_name = data.get('user_name')
     message = data.get('message')
-    # print(data)
+
+    if not room_id or not user_name or not message:
+        print(f'Error: Missing required fields in data: {data}')
+        return
+
+    if user_name not in clients:
+        print(f'Error: User {user_name} does not exist.')
+        return
+
+    if room_id not in rooms:
+        print(f'Error: Room {room_id} does not exist.')
+        return
 
     print(f'room_id: {room_id}, user_name: {user_name}, message: {message}')
 
     # 클라이언트가 방을 변경하는 경우
-    # 기존 방 아이디와 같은 message를 보내면 해당 방에서 제거하고 m 방에 추가
-    # 이후에 이 부분은 Redis를 사용하여 처리할 예정
     if message == clients[user_name]['room_id']:
         room_id = 'm'
         old_room = clients[user_name]['room_id']
@@ -61,15 +78,29 @@ async def CS_CHAT(sid, data):
 async def CS_MOVEMENT_INFO(sid, data):
     print(f'client send CS_MOVEMENT_INFO')
 
+    # 데이터 유효성 검사
+    if not isinstance(data, dict):
+        print(f'Error: Invalid data format: {data}')
+        return
+
     user_id = data.get('user_id')
     room_id = data.get('room_id')
-    # position = data.get('position')
-    # position = position.split(',')
     position_x = data.get('position_x')
     position_y = data.get('position_y')
 
-    print(f'user_id: {user_id}, room_id: {room_id}, position_x: {position_x}, position_y: {position_y}')
+    if not user_id or not room_id or position_x is None or position_y is None:
+        print(f'Error: Missing data: {data}')
+        return
 
+    if user_id not in clients:
+        print(f'Error: User {user_id} does not exist.')
+        return
+
+    if room_id not in rooms:
+        print(f'Error: Room {room_id} does not exist.')
+        return
+
+    print(f'user_id: {user_id}, room_id: {room_id}, position_x: {position_x}, position_y: {position_y}')
 
     # 해당 room에 있는 모든 클라이언트에게 움직임 정보를 전송
     for client in rooms[room_id]:
