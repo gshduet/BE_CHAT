@@ -77,7 +77,8 @@ async def CS_MOVEMENT_INFO(sid, data):
             'room_id': room_id,
             'user_id': user_id,
             'position_x': position_x,
-            'position_y': position_y
+            'position_y': position_y,
+            'img_url': clients[user_id]['img_url']
         }, to=client['client_id'])
 
 @sio_server.event
