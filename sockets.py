@@ -32,7 +32,6 @@ async def CS_CHAT(sid, data):
     message = data.get('message')
     # print(data)
 
-
     print(f'room_id: {room_id}, user_name: {user_name}, message: {message}')
 
     # 클라이언트가 방을 변경하는 경우
@@ -56,6 +55,29 @@ async def CS_CHAT(sid, data):
         await sio_server.emit('SC_CHAT', {
             'user_name': user_name,
             'message': message
+        }, to=client['client_id'])
+
+@sio_server.event
+async def CS_MOVEMENT_INFO(sid, data):
+    print(f'client send CS_MOVEMENT_INFO')
+
+    user_id = data.get('user_id')
+    room_id = data.get('room_id')
+    # position = data.get('position')
+    # position = position.split(',')
+    position_x = data.get('position_x')
+    position_y = data.get('position_y')
+
+    print(f'user_id: {user_id}, room_id: {room_id}, position_x: {position_x}, position_y: {position_y}')
+
+
+    # 해당 room에 있는 모든 클라이언트에게 움직임 정보를 전송
+    for client in rooms[room_id]:
+        await sio_server.emit('SC_MOVEMENT_INFO', {
+            'room_id': room_id,
+            'user_id': user_id,
+            'position_x': position_x,
+            'position_y': position_y
         }, to=client['client_id'])
 
 @sio_server.event
