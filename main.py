@@ -17,7 +17,7 @@ app.add_middleware(
 
 @app.get("/")
 async def home():
-    return {"message": "my server is running"}
+    return {"status": 200, 'message': 'my server is running'}
 
 
 @app.get("/health")
