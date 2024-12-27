@@ -7,7 +7,7 @@ sio_server = socketio.AsyncServer(
 
 sio_app = socketio.ASGIApp(
     socketio_server=sio_server,
-    socketio_path='/sockets'
+    socketio_path='/sio/sockets'
 )
 
 # 방 정보를 관리할 딕셔너리
