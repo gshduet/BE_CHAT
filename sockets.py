@@ -13,17 +13,18 @@ sio_app = socketio.ASGIApp(
 
 # 추후 Redis를 사용하여 데이터를 저장할 예정 {
 # 방 정보를 관리할 딕셔너리
+# rooms = {room_id: [client_id1, client_id2]}
 rooms = {}
 default_room = "floor07"
 test_meeting_room = "meeting_room"
 
-# 클라이언트 정보를 저장할 리스트
-clients = []
+# 클라이언트 정보를 저장할 딕셔너리
+# clients = {client_id: {room_id: room_id, img_url: img_url}}
+clients = {}
 
 # sid와 client_id 매핑을 저장할 딕셔너리
 client_to_sid = {}
 # }
-
 
 @sio_server.event
 async def connect(sid, environ):
@@ -36,23 +37,25 @@ async def connect(sid, environ):
         print(f"Connection rejected: client_id not provided")
         return False
     
-    clients.append(client_id)
+    clients[client_id] = {
+        'room_id': default_room,
+        'img_url': 'img_url'
+    }
 
     print(f'{client_id} ({sid}): connected')
 
-    # 추후 Redis를 사용하여 데이터를 저장할 예정 {
     # sid와 client_id 매핑 저장
     client_to_sid[client_id] = sid
 
     # 기본적으로 floor07 방에 클라이언트 추가
     if default_room not in rooms:
         rooms[default_room] = []
-    rooms[default_room].append({'client_id': client_id})
-    # }
+
+    rooms[default_room].append(client_id)
+
+    print(f'rooms: {rooms}')
 
     print(f'{client_id}: joined {default_room}')
-
-
 
 @sio_server.event
 async def CS_CHAT(sid, data):
@@ -70,37 +73,37 @@ async def CS_CHAT(sid, data):
         print(f'Error: Missing required fields in data: {data}')
         return
 
-    if user_name not in clients:
-        print(f'Error: User {user_name} does not exist.')
+    if client_id not in clients:
+        print(f'Error: Client {client_id} does not exist.')
         return
 
     if room_id not in rooms:
         print(f'Error: Room {room_id} does not exist.')
         return
 
-    print(f'room_id: {room_id}, user_name: {user_name}, message: {message}')
+    print(f'{client_id}: {user_name} sent message: {message}')
 
     # 클라이언트가 방을 변경하는 경우
     # 자신의 room_id와 같은 메세지를 보내면 test_meeting_room으로 방을 변경
     if message == clients[client_id]['room_id']:
-        room_id = test_meeting_room
         old_room = clients[client_id]['room_id']
+        clients[client_id]['room_id'] = test_meeting_room
 
-        rooms[old_room] = [
-            client for client in rooms[old_room]
-            if client['client_id'] != user_name
-        ]
-        clients[client_id]['room_id'] = room_id
+        if old_room in rooms:
+            rooms[old_room] = [client for client in rooms[old_room] if client != client_id]
+        
+        if test_meeting_room not in rooms:
+            rooms[test_meeting_room] = []
+        rooms[test_meeting_room].append(client_id)
 
-        rooms[room_id].append({'client_id': client_id, 'img_url': clients[user_name]['img_url']})
-        print(f'{client_id}: {user_name} moved to room {room_id}')
+        print(f'{client_id}: {user_name} moved to room {test_meeting_room}')
 
     # 해당 room에 있는 모든 클라이언트에게 메세지를 보냄
     for client in rooms[room_id]:
         await sio_server.emit('SC_CHAT', {
             'user_name': user_name,
             'message': message
-        }, to=client['client_id'])
+        }, to=client_to_sid.get(client))
 
 @sio_server.event
 async def CS_MOVEMENT_INFO(sid, data):
@@ -138,13 +141,21 @@ async def CS_MOVEMENT_INFO(sid, data):
             'position_x': position_x,
             'position_y': position_y,
             'direction': direction
-        }, to=client['client_id'])
+        }, to=client_to_sid.get(client))
 
 @sio_server.event
 async def disconnect(sid):
-    # 추후 Redis에서 데이터를 처리할 예정 {
-    client_id = client_to_sid.get(sid)
-    client_to_sid.pop(client_id)
-    # }
+    client_id = None
+    for cid, stored_sid in client_to_sid.items():
+        if stored_sid == sid:
+            client_id = cid
+            break
+
+    if client_id:
+        client_to_sid.pop(client_id, None)
+        room_id = clients[client_id]['room_id']
+        if room_id in rooms:
+            rooms[room_id] = [client for client in rooms[room_id] if client != client_id]
+        clients.pop(client_id, None)
 
     print(f'{client_id}:{sid}: disconnected')
