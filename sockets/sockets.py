@@ -1,24 +1,31 @@
 import socketio
-import redis
-# from core.databases import get_redis
+import redis.asyncio as redis
 from urllib.parse import parse_qs
+import asyncio
 
 # Ubuntu Redis 사용 test code
 REDIS_HOST = '127.0.0.1'
 REDIS_PORT = 6379
 REDIS_DB = 0
 
-try:
-    redis_client = redis.StrictRedis(
-        host=REDIS_HOST,
-        port=REDIS_PORT,
-        db=REDIS_DB,
-        decode_responses=True
-    )
-    if redis_client.ping():
-        print("Redis connected successfully!")
-except redis.ConnectionError as e:
-    print(f"Redis connection failed: {e}")
+# Redis 클라이언트 생성
+redis_client = None
+
+async def init_redis():
+    global redis_client
+    try:
+        redis_client = redis.Redis(
+            host=REDIS_HOST,
+            port=REDIS_PORT,
+            db=REDIS_DB,
+            decode_responses=True
+        )
+        # Redis 연결 테스트
+        if await redis_client.ping():
+            print("Redis connected successfully!")
+    except Exception as e:
+        print(f"Failed to connect to Redis: {e}")
+        redis_client = None
 
 sio_server = socketio.AsyncServer(
     async_mode='asgi',
@@ -30,11 +37,11 @@ sio_app = socketio.ASGIApp(
     socketio_path='/sio/sockets'
 )
 
-# redis_client = get_redis()
+# Redis 초기화 비동기로 실행
+# asyncio.run(init_redis())
 
 @sio_server.event
 async def connect(sid, environ):
-    # 클라이언트가 보낸 데이터에서 client_id 추출
     query_string = environ.get("QUERY_STRING", "")
     query_params = parse_qs(query_string)
     client_id = query_params.get("client_id", [None])[0]
@@ -45,13 +52,6 @@ async def connect(sid, environ):
 
     print(f'{client_id} ({sid}): connected')
 
-    # Ping 테스트
-    response = redis_client.ping()
-    if response:
-        print("Redis connected successfully! Pong received.")
-    else:
-        print("Redis connection failed. No Pong received.")
-
     # sid와 client_id 매핑 저장
     await redis_client.hset("sid_to_client", sid, client_id)
     await redis_client.hset("client_to_sid", client_id, sid)
@@ -61,7 +61,7 @@ async def connect(sid, environ):
     # 기본적으로 floor07 방에 클라이언트 추가
     default_room = "floor07"
     await redis_client.sadd(f"rooms:{default_room}", client_id)
-    await redis_client.hset("clients", client_id, {"room_id": default_room, "img_url": "https://i.imgur"})
+    await redis_client.hset("clients", client_id, str({"room_id": default_room, "img_url": "https://i.imgur"}))
     
     print(f'{client_id}: joined {default_room}')
 
@@ -73,23 +73,26 @@ async def CS_CHAT(sid, data):
     message = data.get('message')
     print(f'room_id: {room_id}, user_name: {user_name}, message: {message}')
 
-    current_room = (await redis_client.hget("clients", client_id))["room_id"]
+    client_data = await redis_client.hget("clients", client_id)
+    if client_data:
+        client_data = eval(client_data)  # 문자열을 딕셔너리로 변환
+        current_room = client_data["room_id"]
 
-    if message == current_room:
-        new_room = "m"
-        # 방 이동 처리
-        await redis_client.srem(f"rooms:{current_room}", client_id)
-        await redis_client.sadd(f"rooms:{new_room}", client_id)
-        await redis_client.hset("clients", client_id, {"room_id": new_room})
-        print(f'{user_name} moved to room {new_room}')
+        if message == current_room:
+            new_room = "m"
+            # 방 이동 처리
+            await redis_client.srem(f"rooms:{current_room}", client_id)
+            await redis_client.sadd(f"rooms:{new_room}", client_id)
+            await redis_client.hset("clients", client_id, str({"room_id": new_room}))
+            print(f'{user_name} moved to room {new_room}')
 
-    # 해당 room에 있는 모든 클라이언트에게 메시지를 보냄
-    room_clients = await redis_client.smembers(f"rooms:{room_id}")
-    for client_id in room_clients:
-        await sio_server.emit('SC_CHAT', {
-            'user_name': user_name,
-            'message': message
-        }, to=client_id)
+        # 해당 room에 있는 모든 클라이언트에게 메시지를 보냄
+        room_clients = await redis_client.smembers(f"rooms:{room_id}")
+        for client_id in room_clients:
+            await sio_server.emit('SC_CHAT', {
+                'user_name': user_name,
+                'message': message
+            }, to=client_id)
 
 @sio_server.event
 async def CS_MOVEMENT_INFO(sid, data):
@@ -114,7 +117,6 @@ async def CS_MOVEMENT_INFO(sid, data):
 async def disconnect(sid):
     print(f'{sid}: disconnected')
 
-    # sid로 client_id를 조회
     client_id = await redis_client.hget("sid_to_client", sid)
     if not client_id:
         print(f"Disconnect failed: client_id not found for sid {sid}")
@@ -122,16 +124,14 @@ async def disconnect(sid):
 
     # 클라이언트 정보를 제거
     client_info = await redis_client.hget("clients", client_id)
-    if not client_info:
-        print(f"Client data not found for {client_id}")
-        return
-
-    room_id = client_info["room_id"]
-    await redis_client.srem(f"rooms:{room_id}", client_id)
-    await redis_client.hdel("clients", client_id)
+    if client_info:
+        client_data = eval(client_info)
+        room_id = client_data.get("room_id")
+        await redis_client.srem(f"rooms:{room_id}", client_id)
+        await redis_client.hdel("clients", client_id)
 
     # 매핑 데이터 제거
     await redis_client.hdel("sid_to_client", sid)
     await redis_client.hdel("client_to_sid", client_id)
 
-    print(f'{client_id}: removed from {room_id}')
+    print(f'{client_id}: removed')
