@@ -17,8 +17,8 @@ rooms = {}
 default_room = "floor07"
 test_meeting_room = "meeting_room"
 
-# 클라이언트 정보를 관리할 딕셔너리
-clients = {'user1': {'img_url': "https://i.imgur", 'room_id': 'floor07'}}
+# 클라이언트 정보를 저장할 리스트
+clients = []
 
 # sid와 client_id 매핑을 저장할 딕셔너리
 client_to_sid = {}
@@ -35,6 +35,8 @@ async def connect(sid, environ):
     if not client_id:
         print(f"Connection rejected: client_id not provided")
         return False
+    
+    clients.append(client_id)
 
     print(f'{client_id} ({sid}): connected')
 
@@ -126,8 +128,8 @@ async def CS_MOVEMENT_INFO(sid, data):
     if room_id not in rooms:
         print(f'Error: Room {room_id} does not exist.')
         return
-
-    print(f'user_id: {user_id}, room_id: {room_id}, position_x: {position_x}, position_y: {position_y}')
+    
+    print(f'user_id: {user_id}, room_id: {room_id}, position_x: {position_x}, position_y: {position_y}, direction: {direction}')
 
     # 해당 room에 있는 모든 클라이언트에게 움직임 정보를 전송
     for client in rooms[room_id]:
