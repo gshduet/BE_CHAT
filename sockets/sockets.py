@@ -3,7 +3,7 @@ from urllib.parse import parse_qs
 
 sio_server = socketio.AsyncServer(
     async_mode='asgi',
-    cors_allowed_origins=[]
+    cors_allowed_origins=[]  # 특정 도메인 허용
 )
 
 sio_app = socketio.ASGIApp(
@@ -54,7 +54,6 @@ async def connect(sid, environ):
     rooms[default_room].append(client_id)
 
     print(f'rooms: {rooms}')
-
     print(f'{client_id}: joined {default_room}')
 
 @sio_server.event
