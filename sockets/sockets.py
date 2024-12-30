@@ -1,5 +1,6 @@
 import socketio
 from urllib.parse import parse_qs
+import asyncio
 
 sio_server = socketio.AsyncServer(
     async_mode='asgi',
@@ -26,6 +27,9 @@ clients = {}
 client_to_sid = {}
 # }
 
+disconnected_clients = {}   # 재접속을 기다리는 클라이언트 정보를 저장할 딕셔너리
+DISCONNECT_TIMEOUT = 5  # 5초 대기 후 disconnect 처리, 클라이언트의 재접속을 기다리는 시간
+
 @sio_server.event
 async def connect(sid, environ):
     # 클라이언트가 보낸 데이터에서 client_id 추출
@@ -36,7 +40,16 @@ async def connect(sid, environ):
     if not client_id:
         print(f"Connection rejected: client_id not provided")
         return False
-    
+
+    # 클라이언트가 재접속하는 경우 처리
+    if client_id in disconnected_clients:
+        print(f"Reconnecting client {client_id}")
+        reconnect_event = disconnected_clients[client_id].get('reconnect_event')
+        if reconnect_event:  # reconnect_event가 존재하는지 확인
+            reconnect_event.set()
+        disconnected_clients.pop(client_id, None)
+
+    # 클라이언트 등록
     clients[client_id] = {
         'room_id': default_room,
         'img_url': 'img_url'
@@ -44,17 +57,20 @@ async def connect(sid, environ):
 
     print(f'{client_id} ({sid}): connected')
 
-    # sid와 client_id 매핑 저장
+    # 클라이언트 id와 sid 매핑
     client_to_sid[client_id] = sid
 
-    # 기본적으로 floor07 방에 클라이언트 추가
+    # 중간 발표를 위한 테스트 코드
+    # 클라이언트를 default_room에 추가
     if default_room not in rooms:
         rooms[default_room] = []
 
-    rooms[default_room].append(client_id)
+    if client_id not in rooms[default_room]:
+        rooms[default_room].append(client_id)
 
     print(f'rooms: {rooms}')
     print(f'{client_id}: joined {default_room}')
+
 
 @sio_server.event
 async def CS_CHAT(sid, data):
@@ -153,8 +169,25 @@ async def disconnect(sid):
     if client_id:
         client_to_sid.pop(client_id, None)
         room_id = clients[client_id]['room_id']
-        if room_id in rooms:
-            rooms[room_id] = [client for client in rooms[room_id] if client != client_id]
-        clients.pop(client_id, None)
 
-    print(f'{client_id}:{sid}: disconnected')
+        # 클라이언트를 disconnected_clients 딕셔너리에 추가
+        reconnect_event = asyncio.Event()
+        disconnected_clients[client_id] = {
+            'room_id': room_id,
+            'reconnect_event': reconnect_event
+        }
+
+        print(f'{client_id}:{sid}: disconnected. Waiting for reconnect.')
+
+        # 설정 시간동안 클라이언트의 재연결 대기.
+        # 타임아웃이 지나면 클라이언트를 완전히 끊긴 것으로 처리함.
+        try:
+            await asyncio.wait_for(reconnect_event.wait(), timeout=DISCONNECT_TIMEOUT)
+        except asyncio.TimeoutError:
+            print(f'{client_id}: did not reconnect. Removing from server.')
+            if room_id in rooms:
+                rooms[room_id] = [client for client in rooms[room_id] if client != client_id]
+            clients.pop(client_id, None)
+            disconnected_clients.pop(client_id, None)
+
+        print(f'rooms after disconnect: {rooms}')
