@@ -81,12 +81,12 @@ async def CS_CHAT(sid, data):
 
     room_id = data.get('room_id')
     client_id = data.get('client_id')
-    user_name = data.get('user_name')
+    # user_name = data.get('user_name')   # 유저의 본명
     message = data.get('message')
 
-    if not room_id or not user_name or not message:
-        print(f'Error: Missing required fields in data: {data}')
-        return
+    # if not room_id or not user_name or not message:
+    #     print(f'Error: Missing required fields in data: {data}')
+    #     return
 
     if client_id not in clients:
         print(f'Error: Client {client_id} does not exist.')
@@ -96,7 +96,8 @@ async def CS_CHAT(sid, data):
         print(f'Error: Room {room_id} does not exist.')
         return
 
-    print(f'{client_id}: {user_name} sent message: {message}')
+    # print(f'{client_id}: {user_name} sent message: {message}')
+    print(f'{client_id}: {client_id} sent message: {message}')
 
     # 클라이언트가 방을 변경하는 경우
     # 자신의 room_id와 같은 메세지를 보내면 test_meeting_room으로 방을 변경
@@ -111,12 +112,12 @@ async def CS_CHAT(sid, data):
             rooms[test_meeting_room] = []
         rooms[test_meeting_room].append(client_id)
 
-        print(f'{client_id}: {user_name} moved to room {test_meeting_room}')
+        # print(f'{client_id}: {user_name} moved to room {test_meeting_room}')
 
     # 해당 room에 있는 모든 클라이언트에게 메세지를 보냄
     for client in rooms[room_id]:
         await sio_server.emit('SC_CHAT', {
-            'user_name': user_name,
+            'user_name': client_id,
             'message': message
         }, to=client_to_sid.get(client))
 
