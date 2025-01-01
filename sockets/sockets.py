@@ -79,7 +79,7 @@ async def CS_CHAT(sid, data):
 
     room_id = data.get("room_id")
     client_id = data.get("client_id")
-    # user_name = data.get('user_name')   # 유저의 본명
+    user_name = data.get('user_name')   # 유저의 본명
     message = data.get("message")
 
     # if not room_id or not user_name or not message:
@@ -118,7 +118,7 @@ async def CS_CHAT(sid, data):
     for client in rooms[room_id]:
         await sio_server.emit(
             "SC_CHAT",
-            {"user_name": client_id, "message": message},
+            {"user_name": user_name, "message": message},
             to=client_to_sid.get(client),
         )
 
