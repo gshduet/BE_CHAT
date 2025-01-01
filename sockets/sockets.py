@@ -38,6 +38,7 @@ async def connect(sid, environ):
     query_string = environ.get("QUERY_STRING", "")
     query_params = parse_qs(query_string)
     client_id = query_params.get("client_id", [None])[0]
+    user_name = query_params.get("user_name", [None])[0]
 
     if not client_id:
         print(f"Connection rejected: client_id not provided")
@@ -58,7 +59,7 @@ async def connect(sid, environ):
         "position_x": 500,  # 기본값 설정
         "position_y": 500,  # 기본값 설정
         "direction": 1,  # 기본값 설정
-        "user_name": client_id,
+        "user_name": user_name,
     }
 
         # 클라이언트 id와 sid 매핑
@@ -71,7 +72,7 @@ async def connect(sid, environ):
             "SC_MOVEMENT_INFO",
             {
                 "user_id": client_id,
-                "user_name": client_id,
+                "user_name": user_name,
                 "position_x": clients[client_id]["position_x"],
                 "position_y": clients[client_id]["position_y"],
                 "direction": clients[client_id]["direction"],
