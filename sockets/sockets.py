@@ -134,11 +134,12 @@ async def CS_MOVEMENT_INFO(sid, data):
 
     room_id = data.get("room_id")
     user_id = data.get("user_id")
+    user_name = data.get("user_name")
     position_x = data.get("position_x")
     position_y = data.get("position_y")
     direction = data.get("direction")
 
-    if not user_id or not room_id or position_x is None or position_y is None:
+    if not user_id or not user_name or not room_id or position_x is None or position_y is None:
         print(f"Error: Missing data: {data}")
         return
 
@@ -160,6 +161,7 @@ async def CS_MOVEMENT_INFO(sid, data):
             "SC_MOVEMENT_INFO",
             {
                 "user_id": user_id,
+                "user_name": user_name,
                 "position_x": position_x,
                 "position_y": position_y,
                 "direction": direction,
