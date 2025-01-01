@@ -16,6 +16,7 @@ sio_app = socketio.ASGIApp(socketio_server=sio_server, socketio_path="/sio/socke
 rooms = {}
 default_room = "floor07"
 test_meeting_room = "meeting_room"
+rooms[default_room] = []
 
 # 클라이언트 정보를 저장할 딕셔너리
 # clients = {client_id: {room_id: room_id, img_url: img_url}}
@@ -46,28 +47,65 @@ async def connect(sid, environ):
     if client_id in disconnected_clients:
         print(f"Reconnecting client {client_id}")
         reconnect_event = disconnected_clients[client_id].get("reconnect_event")
-        if reconnect_event:  # reconnect_event가 존재하는지 확인
             reconnect_event.set()
         disconnected_clients.pop(client_id, None)
 
+
     # 클라이언트 등록
-    clients[client_id] = {"room_id": default_room, "img_url": "img_url"}
+    clients[client_id] = {
+        "room_id": default_room,
+        "img_url": "img_url",
+        "position_x": 500,  # 기본값 설정
+        "position_y": 500,  # 기본값 설정
+        "direction": 1,  # 기본값 설정
+        "user_name": client_id,
+    }
+
+        # 클라이언트 id와 sid 매핑
+    client_to_sid[client_id] = sid
+
+
+    # 기존 유저들에게 새로 들어온 유저의 위치 정보를 전송
+    for client in rooms[default_room]:
+        await sio_server.emit(
+            "SC_MOVEMENT_INFO",
+            {
+                "user_id": client_id,
+                "user_name": client_id,
+                "position_x": clients[client_id]["position_x"],
+                "position_y": clients[client_id]["position_y"],
+                "direction": clients[client_id]["direction"],
+            },
+            to=client_to_sid.get(client),
+        )
 
     print(f"{client_id} ({sid}): connected")
 
-    # 클라이언트 id와 sid 매핑
-    client_to_sid[client_id] = sid
+    # 새로 들어온 유저애개 기존 유저들의 위치 정보를 전송
+    for client in rooms[default_room]:
+        await sio_server.emit(
+            "SC_MOVEMENT_INFO",
+            {
+                "user_id": client,
+                "user_name": clients[client]["user_name"],
+                "position_x": clients[client]["position_x"],
+                "position_y": clients[client]["position_y"],
+                "direction": clients[client]["direction"],
+            },
+            to=sid,
+        )
 
-    # 중간 발표를 위한 테스트 코드
-    # 클라이언트를 default_room에 추가
-    if default_room not in rooms:
-        rooms[default_room] = []
+        # 어떤 유저의 정보를 보냈는지 확인
+        print(f"send user_id: {client}, x: {clients[client]['position_x']}, y: {clients[client]['position_y']}, direction: {clients[client]['direction']}")
 
+    # 새로운 클라이언트를 방에 추가
     if client_id not in rooms[default_room]:
         rooms[default_room].append(client_id)
 
+
     print(f"rooms: {rooms}")
     print(f"{client_id}: joined {default_room}")
+
 
 
 @sio_server.event
@@ -155,13 +193,19 @@ async def CS_MOVEMENT_INFO(sid, data):
         f"user_id: {user_id}, room_id: {room_id}, position_x: {position_x}, position_y: {position_y}, direction: {direction}"
     )
 
+    # 클라이언트의 위치 정보 업데이트
+    # clients[user_name] = user_name
+    clients[user_id]["position_x"] = position_x
+    clients[user_id]["position_y"] = position_y
+    clients[user_id]["direction"] = direction
+
     # 해당 room에 있는 모든 클라이언트에게 움직임 정보를 전송
     for client in rooms[room_id]:
         await sio_server.emit(
             "SC_MOVEMENT_INFO",
             {
                 "user_id": user_id,
-                "user_name": user_name,
+                "user_name": clients[user_id]["user_name"],
                 "position_x": position_x,
                 "position_y": position_y,
                 "direction": direction,
