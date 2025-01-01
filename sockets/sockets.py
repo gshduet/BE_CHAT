@@ -47,7 +47,7 @@ async def connect(sid, environ):
     if client_id in disconnected_clients:
         print(f"Reconnecting client {client_id}")
         reconnect_event = disconnected_clients[client_id].get("reconnect_event")
-            reconnect_event.set()
+        reconnect_event.set()
         disconnected_clients.pop(client_id, None)
 
 
