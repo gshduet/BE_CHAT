@@ -38,6 +38,7 @@ async def connect(sid, environ):
     query_string = environ.get("QUERY_STRING", "")
     query_params = parse_qs(query_string)
     client_id = query_params.get("client_id", [None])[0]
+    user_name = query_params.get("user_name", [None])[0]
 
     if not client_id:
         print(f"Connection rejected: client_id not provided")
@@ -47,7 +48,7 @@ async def connect(sid, environ):
     if client_id in disconnected_clients:
         print(f"Reconnecting client {client_id}")
         reconnect_event = disconnected_clients[client_id].get("reconnect_event")
-            reconnect_event.set()
+        reconnect_event.set()
         disconnected_clients.pop(client_id, None)
 
 
@@ -58,7 +59,7 @@ async def connect(sid, environ):
         "position_x": 500,  # 기본값 설정
         "position_y": 500,  # 기본값 설정
         "direction": 1,  # 기본값 설정
-        "user_name": client_id,
+        "user_name": user_name,
     }
 
         # 클라이언트 id와 sid 매핑
@@ -71,7 +72,7 @@ async def connect(sid, environ):
             "SC_MOVEMENT_INFO",
             {
                 "user_id": client_id,
-                "user_name": client_id,
+                "user_name": user_name,
                 "position_x": clients[client_id]["position_x"],
                 "position_y": clients[client_id]["position_y"],
                 "direction": clients[client_id]["direction"],
@@ -117,7 +118,7 @@ async def CS_CHAT(sid, data):
 
     room_id = data.get("room_id")
     client_id = data.get("client_id")
-    # user_name = data.get('user_name')   # 유저의 본명
+    user_name = data.get('user_name')   # 유저의 본명
     message = data.get("message")
 
     # if not room_id or not user_name or not message:
@@ -156,7 +157,7 @@ async def CS_CHAT(sid, data):
     for client in rooms[room_id]:
         await sio_server.emit(
             "SC_CHAT",
-            {"user_name": client_id, "message": message},
+            {"user_name": user_name, "message": message},
             to=client_to_sid.get(client),
         )
 
