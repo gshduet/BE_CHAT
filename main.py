@@ -8,7 +8,7 @@ app.mount("/sio", app=sio_app)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://jgtower.com"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
