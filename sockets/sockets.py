@@ -118,7 +118,9 @@ async def CS_CHAT(sid, data):
 
     room_id = data.get("room_id")
     client_id = data.get("client_id")
-    user_name = data.get('user_name')   # 유저의 본명
+    user_name = data.get('user_name')   # 유저의 본명 추후 connection에서 받아온 정보로 변경
+                                        # user_name = clients[client_id]["user_name"]
+                                        # 클라이언트가 보내지 않도록 변경해야 함
     message = data.get("message")
 
     # if not room_id or not user_name or not message:
@@ -195,7 +197,7 @@ async def CS_MOVEMENT_INFO(sid, data):
     )
 
     # 클라이언트의 위치 정보 업데이트
-    # clients[user_name] = user_name
+    clients[user_id]["user_name"] = user_name
     clients[user_id]["position_x"] = position_x
     clients[user_id]["position_y"] = position_y
     clients[user_id]["direction"] = direction
@@ -206,7 +208,7 @@ async def CS_MOVEMENT_INFO(sid, data):
             "SC_MOVEMENT_INFO",
             {
                 "user_id": user_id,
-                "user_name": clients[user_id]["user_name"],
+                "user_name": user_name,
                 "position_x": position_x,
                 "position_y": position_y,
                 "direction": direction,
