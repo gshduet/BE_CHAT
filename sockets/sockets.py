@@ -192,4 +192,12 @@ async def disconnect(sid):
             clients.pop(client_id, None)
             disconnected_clients.pop(client_id, None)
 
+            # 방에 남은 클라이언트에게 퇴장 정보 전달
+            for client in rooms[room_id]:
+                await sio_server.emit(
+                    "SC_LEAVE",
+                    {"client_id": client_id},
+                    to=client_to_sid.get(client),
+                )
+
         print(f"{client_id} disconnected completely from room {room_id}")
