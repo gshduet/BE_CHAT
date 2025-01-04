@@ -92,7 +92,7 @@ async def connect(sid, environ):
             to=sid,
         )
 
-    print(f"{client_id} ({sid}): connected to room {room_id}")
+    print(f"{user_name} ({client_id}): connected to room {room_id}")
 
 @sio_server.event
 async def CS_CHAT(sid, data):
@@ -110,7 +110,7 @@ async def CS_CHAT(sid, data):
     message = data.get("message")
 
     # 데이터 유효성 검증
-    if not message or client_id not in clients:
+    if not message or client_id not in clients.keys():
         print(f"Error: Missing fields or invalid client_id")
         return
 
@@ -122,6 +122,8 @@ async def CS_CHAT(sid, data):
             {"user_name": clients[client_id]["user_name"], "message": message},
             to=client_to_sid.get(client),
         )
+
+    print(f"{clients[client_id]['user_name']} sent CS_CHAT {message}")
 
 @sio_server.event
 async def CS_MOVEMENT_INFO(sid, data):
@@ -137,7 +139,7 @@ async def CS_MOVEMENT_INFO(sid, data):
             break
 
     # 데이터 및 클라이언트 존재 여부 검증
-    if not client_id or client_id not in clients:
+    if not client_id or client_id not in clients.keys():
         print(f"Error: Invalid or missing client_id")
         return
 
@@ -151,6 +153,8 @@ async def CS_MOVEMENT_INFO(sid, data):
         return
 
     clients[client_id].update({"position_x": position_x, "position_y": position_y, "direction": direction})
+
+    print(f"{clients[client_id]['user_name']}: position ({position_x}, {position_y})")
 
     # 동일 방의 모든 클라이언트에게 움직임 정보 전송
     room_id = clients[client_id]["room_id"]
@@ -184,6 +188,8 @@ async def disconnect(sid):
             "reconnect_event": reconnect_event,
         }
 
+        print(f"watching {client_id} for reconnection")
+
         # 재접속 대기 처리
         try:
             await asyncio.wait_for(reconnect_event.wait(), timeout=DISCONNECT_TIMEOUT)
@@ -200,4 +206,4 @@ async def disconnect(sid):
                     to=client_to_sid.get(client),
                 )
 
-        print(f"{client_id} disconnected completely from room {room_id}")
+            print(f"{client_id} disconnected completely from room {room_id}")
