@@ -83,6 +83,8 @@ async def connect(sid, environ):
             to=client_to_sid.get(client),
         )
 
+        print(f"new user info sent to old user {clients[client_id]['user_name']}")
+
         # 새 유저에게 기존 유저 정보 전달
         await sio_server.emit(
             "SC_ENTER_ROOM",
