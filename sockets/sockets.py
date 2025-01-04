@@ -60,6 +60,9 @@ async def connect(sid, environ):
     }
     client_to_sid[client_id] = sid  # client_id와 sid 매핑
 
+        # 방에 클라이언트 추가
+    if client_id not in rooms[room_id]:
+        rooms[room_id].append(client_id)
     
     for client in rooms[room_id]:
         # 기존 유저들에게 새 유저 정보 알림
@@ -101,9 +104,7 @@ async def connect(sid, environ):
         print(f"old user info sent to new user {clients[client]["user_name"]}")
        
 
-    # 방에 클라이언트 추가
-    if client_id not in rooms[room_id]:
-        rooms[room_id].append(client_id)
+
 
     print(f"{user_name} ({client_id}): connected to room {room_id}")
 
