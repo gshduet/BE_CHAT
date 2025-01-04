@@ -60,8 +60,9 @@ async def connect(sid, environ):
     }
     client_to_sid[client_id] = sid  # client_id와 sid 매핑
 
-    # 기존 유저들에게 새 유저 정보 알림
+    
     for client in rooms[room_id]:
+        # 기존 유저들에게 새 유저 정보 알림
         await sio_server.emit(
             "SC_MOVEMENT_INFO",
             {
@@ -82,16 +83,11 @@ async def connect(sid, environ):
             to=client_to_sid.get(client),
         )
 
-    # 방에 클라이언트 추가
-    if client_id not in rooms[room_id]:
-        rooms[room_id].append(client_id)
-
-    # 새 유저에게 기존 유저 정보 전달
-    for client in rooms[room_id]:
+        # 새 유저에게 기존 유저 정보 전달
         await sio_server.emit(
-            "SC_MOVEMENT_INFO",
+            "SC_ENTER_ROOM",
             {
-                "client_id": client,
+                "user_id": client,
                 "user_name": clients[client]["user_name"],
                 "position_x": clients[client]["position_x"],
                 "position_y": clients[client]["position_y"],
@@ -99,6 +95,13 @@ async def connect(sid, environ):
             },
             to=sid,
         )
+
+        print(f"old user info sent to new user {clients[client]["user_name"]}")
+       
+
+    # 방에 클라이언트 추가
+    if client_id not in rooms[room_id]:
+        rooms[room_id].append(client_id)
 
     print(f"{user_name} ({client_id}): connected to room {room_id}")
 
@@ -209,7 +212,7 @@ async def disconnect(sid):
             # 방에 남은 클라이언트에게 퇴장 정보 전달
             for client in rooms[room_id]:
                 await sio_server.emit(
-                    "SC_LEAVE",
+                    "SC_LEAVE_USER",
                     {"client_id": client_id},
                     to=client_to_sid.get(client),
                 )
