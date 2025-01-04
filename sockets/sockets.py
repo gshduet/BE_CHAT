@@ -74,6 +74,14 @@ async def connect(sid, environ):
             to=client_to_sid.get(client),
         )
 
+        await sio_server.emit(
+            "SC_ENTER_USER ",
+            {
+                "client_id": client_id,
+            },
+            to=client_to_sid.get(client),
+        )
+
     # 방에 클라이언트 추가
     if client_id not in rooms[room_id]:
         rooms[room_id].append(client_id)
