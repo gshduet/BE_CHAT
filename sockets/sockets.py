@@ -1,6 +1,8 @@
 import socketio
 from urllib.parse import parse_qs
-import asyncio
+
+from core.redis import redis_client
+
 
 sio_server = socketio.AsyncServer(
     async_mode="asgi",

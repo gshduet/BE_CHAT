@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sockets.sockets import sio_app, init_redis
+from sockets.sockets import sio_app
+from core.redis import init_redis
 
 app = FastAPI()
 app.mount('/sio', app=sio_app)
