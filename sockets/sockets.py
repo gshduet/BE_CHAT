@@ -1,148 +1,223 @@
 import socketio
-import redis.asyncio as redis
-import json
 from urllib.parse import parse_qs
-
-# Ubuntu Redis 사용 test code
-REDIS_HOST = '127.0.0.1'
-REDIS_PORT = 6379
-REDIS_DB = 0
-
-# Redis 클라이언트 생성
-redis_client = None
-
-async def init_redis():
-    global redis_client
-    try:
-        redis_client = redis.Redis(
-            host=REDIS_HOST,
-            port=REDIS_PORT,
-            db=REDIS_DB,
-            decode_responses=True
-        )
-        # Redis 연결 테스트
-        if await redis_client.ping():
-            print("Redis connected successfully!")
-    except Exception as e:
-        print(f"Failed to connect to Redis: {e}")
-        redis_client = None
+import asyncio
 
 sio_server = socketio.AsyncServer(
-    async_mode='asgi',
-    cors_allowed_origins=[] # 추후 CORS 설정 필요
+    async_mode="asgi",
+    cors_allowed_origins=[],
+    cors_credentials=True,
 )
 
-sio_app = socketio.ASGIApp(
-    socketio_server=sio_server,
-    socketio_path='/sio/sockets'
-)
+sio_app = socketio.ASGIApp(socketio_server=sio_server, socketio_path="/sio/sockets")
 
+# 방 정보를 관리하는 딕셔너리: {room_id: [client_id1, client_id2, ...]}
+rooms = {}
+
+# 클라이언트 정보를 관리하는 딕셔너리: {client_id: {...정보...}}
+clients = {}
+
+# client_id와 sid를 매핑하는 딕셔너리: {client_id: sid}
+client_to_sid = {}
+
+# 재접속을 대기하는 클라이언트 정보 관리: {client_id: {...정보...}}
+disconnected_clients = {}
+DISCONNECT_TIMEOUT = 5  # 재접속을 대기하는 최대 시간(초)
+
+# 클라이언트 연결 이벤트 처리
 @sio_server.event
 async def connect(sid, environ):
     query_string = environ.get("QUERY_STRING", "")
     query_params = parse_qs(query_string)
     client_id = query_params.get("client_id", [None])[0]
+    user_name = query_params.get("user_name", [None])[0]
+    room_type = query_params.get("room_type", [None])[0]
+    room_id = query_params.get("room_id", [None])[0]
 
-    if not client_id:
-        print(f"Connection rejected: client_id not provided")
+    # 필수 데이터 유효성 검증
+    if not client_id or not room_id:
+        print(f"Connection rejected: client_id or room_id not provided")
         return False
 
-    print(f'{client_id} ({sid}): connected')
+    # 재접속 처리
+    if client_id in disconnected_clients:
+        reconnect_event = disconnected_clients[client_id].get("reconnect_event")
+        reconnect_event.set()  # 재접속 이벤트 발생
+        disconnected_clients.pop(client_id, None)
 
-     # sid와 client_id 매핑 저장
-    try:
-        await redis_client.hset("app:sid_to_client", sid, client_id)
-        await redis_client.hset("app:client_to_sid", client_id, sid)
+    # 새로운 방 생성
+    if room_id not in rooms:
+        rooms[room_id] = []
 
-        default_room = "floor07"
-        await redis_client.sadd(f"app:rooms:{default_room}", client_id)
-        client_data = {"room_id": default_room, "img_url": "https://i.imgur"}
-        await redis_client.hset("app:clients", client_id, json.dumps(client_data))
+    # 클라이언트 정보 등록
+    clients[client_id] = {
+        "room_type": room_type,
+        "room_id": room_id,
+        "user_name": user_name,
+        "position_x": 500,  # 기본 위치
+        "position_y": 500,  # 기본 위치
+        "direction": 1,  # 기본 방향
+        "img_url": "img_url",  # 기본 이미지 URL
+    }
+    client_to_sid[client_id] = sid  # client_id와 sid 매핑
 
-        print(f'{client_id}: joined {default_room}')
-    except Exception as e:
-        print(f"Error during connect: {e}")
-        return False
+        # 방에 클라이언트 추가
+    if client_id not in rooms[room_id]:
+        rooms[room_id].append(client_id)
+    
+    for client in rooms[room_id]:
+        # 기존 유저들에게 새 유저 정보 알림
+        await sio_server.emit(
+            "SC_MOVEMENT_INFO",
+            {
+                "client_id": client_id,
+                "user_name": user_name,
+                "position_x": clients[client_id]["position_x"],
+                "position_y": clients[client_id]["position_y"],
+                "direction": clients[client_id]["direction"],
+            },
+            to=client_to_sid.get(client),
+        )
+
+        await sio_server.emit(
+            "SC_ENTER_USER ",
+            {
+                "client_id": client_id,
+            },
+            to=client_to_sid.get(client),
+        )
+
+        print(f"new user info sent to old user {clients[client_id]['user_name']}")
+
+        # 새 유저에게 기존 유저 정보 전달
+        await sio_server.emit(
+            "SC_ENTER_ROOM",
+            {
+                "user_id": client,
+                "user_name": clients[client]["user_name"],
+                "position_x": clients[client]["position_x"],
+                "position_y": clients[client]["position_y"],
+                "direction": clients[client]["direction"],
+            },
+            to=sid,
+        )
+
+        print(f"old user info sent to new user {clients[client]["user_name"]}")
+       
+
+
+
+    print(f"{user_name} ({client_id}): connected to room {room_id}")
 
 @sio_server.event
 async def CS_CHAT(sid, data):
-    try:
-        room_id = data.get('room_id')
-        user_name = data.get('user_name')
-        message = data.get('message')
+    if not isinstance(data, dict):
+        print(f"Error: Invalid data format")
+        return
 
-        if not (room_id and user_name and message):
-            print("Invalid chat data")
-            return
+    # sid로 client_id 찾기
+    client_id = None
+    for cid, stored_sid in client_to_sid.items():
+        if stored_sid == sid:
+            client_id = cid
+            break
 
-        client_id = await redis_client.hget("app:sid_to_client", sid)
-        if not client_id:
-            print(f"Chat failed: client_id not found for sid {sid}")
-            return
+    message = data.get("message")
 
-        client_data = await redis_client.hget("app:clients", client_id)
-        if client_data:
-            client_data = json.loads(client_data)
-            current_room = client_data["room_id"]
+    # 데이터 유효성 검증
+    if not message or client_id not in clients.keys():
+        print(f"Error: Missing fields or invalid client_id")
+        return
 
-            if message == current_room:
-                new_room = "m"
-                await redis_client.srem(f"app:rooms:{current_room}", client_id)
-                await redis_client.sadd(f"app:rooms:{new_room}", client_id)
-                client_data["room_id"] = new_room
-                await redis_client.hset("app:clients", client_id, json.dumps(client_data))
-                print(f'{user_name} moved to room {new_room}')
+    # 동일 방의 모든 클라이언트에게 메시지 전송
+    room_id = clients[client_id]["room_id"]
+    for client in rooms[room_id]:
+        await sio_server.emit(
+            "SC_CHAT",
+            {"user_name": clients[client_id]["user_name"], "message": message},
+            to=client_to_sid.get(client),
+        )
 
-            room_clients = await redis_client.smembers(f"app:rooms:{room_id}")
-            for client in room_clients:
-                await sio_server.emit('SC_CHAT', {
-                    'user_name': user_name,
-                    'message': message
-                }, to=client)
-    except Exception as e:
-        print(f"Error during CS_CHAT: {e}")
+    print(f"{clients[client_id]['user_name']} sent CS_CHAT {message}")
 
 @sio_server.event
 async def CS_MOVEMENT_INFO(sid, data):
-    try:
-        client_id = data.get('client_id')
-        room_id = data.get('room_id')
-        position_x = data.get('position_x')
-        position_y = data.get('position_y')
+    if not isinstance(data, dict):
+        print(f"Error: Invalid data format")
+        return
 
-        if not (client_id and room_id and isinstance(position_x, (int, float)) and isinstance(position_y, (int, float))):
-            print("Invalid movement data")
-            return
+    # sid로 client_id 찾기
+    client_id = None
+    for cid, stored_sid in client_to_sid.items():
+        if stored_sid == sid:
+            client_id = cid
+            break
 
-        room_clients = await redis_client.smembers(f"app:rooms:{room_id}")
-        for client in room_clients:
-            await sio_server.emit('SC_MOVEMENT_INFO', {
-                'room_id': room_id,
-                'user_id': client_id,
-                'position_x': position_x,
-                'position_y': position_y
-            }, to=client)
-    except Exception as e:
-        print(f"Error during CS_MOVEMENT_INFO: {e}")
+    # 데이터 및 클라이언트 존재 여부 검증
+    if not client_id or client_id not in clients.keys():
+        print(f"Error: Invalid or missing client_id")
+        return
+
+    # 클라이언트 위치 정보 업데이트
+    position_x = data.get("position_x")
+    position_y = data.get("position_y")
+    direction = data.get("direction", clients[client_id]["direction"])
+
+    if position_x is None or position_y is None:
+        print(f"Error: Missing position data")
+        return
+
+    clients[client_id].update({"position_x": position_x, "position_y": position_y, "direction": direction})
+
+    print(f"{clients[client_id]['user_name']}: position ({position_x}, {position_y})")
+
+    # 동일 방의 모든 클라이언트에게 움직임 정보 전송
+    room_id = clients[client_id]["room_id"]
+    for client in rooms[room_id]:
+        await sio_server.emit(
+            "SC_MOVEMENT_INFO",
+            {
+                "client_id": client_id,
+                "user_name": clients[client_id]["user_name"],
+                "position_x": position_x,
+                "position_y": position_y,
+                "direction": direction,
+            },
+            to=client_to_sid.get(client),
+        )
 
 @sio_server.event
 async def disconnect(sid):
-    try:
-        client_id = await redis_client.hget("app:sid_to_client", sid)
-        if not client_id:
-            print(f"Disconnect failed: client_id not found for sid {sid}")
-            return
+    client_id = None
+    for cid, stored_sid in client_to_sid.items():
+        if stored_sid == sid:
+            client_id = cid
+            break
 
-        client_info = await redis_client.hget("app:clients", client_id)
-        if client_info:
-            client_data = json.loads(client_info)
-            room_id = client_data.get("room_id")
-            await redis_client.srem(f"app:rooms:{room_id}", client_id)
-            await redis_client.hdel("app:clients", client_id)
+    if client_id:
+        client_to_sid.pop(client_id, None)
+        room_id = clients[client_id]["room_id"]
+        reconnect_event = asyncio.Event()
+        disconnected_clients[client_id] = {
+            "room_id": room_id,
+            "reconnect_event": reconnect_event,
+        }
 
-        await redis_client.hdel("app:sid_to_client", sid)
-        await redis_client.hdel("app:client_to_sid", client_id)
+        print(f"watching {client_id} for reconnection")
 
-        print(f'{client_id}: removed')
-    except Exception as e:
-        print(f"Error during disconnect: {e}")
+        # 재접속 대기 처리
+        try:
+            await asyncio.wait_for(reconnect_event.wait(), timeout=DISCONNECT_TIMEOUT)
+        except asyncio.TimeoutError:
+            rooms[room_id].remove(client_id)
+            clients.pop(client_id, None)
+            disconnected_clients.pop(client_id, None)
+
+            # 방에 남은 클라이언트에게 퇴장 정보 전달
+            for client in rooms[room_id]:
+                await sio_server.emit(
+                    "SC_LEAVE_USER",
+                    {"client_id": client_id},
+                    to=client_to_sid.get(client),
+                )
+
+            print(f"{client_id} disconnected completely from room {room_id}")
