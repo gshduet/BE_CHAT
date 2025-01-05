@@ -1,8 +1,11 @@
 import socketio
 from urllib.parse import parse_qs
-
 from core.redis import redis_client
-
+from core.redis import (
+    add_to_room, remove_from_room, get_room_clients,
+    set_client_info, get_client_info, delete_client_info,
+    set_sid_mapping, get_client_id_by_sid, delete_sid_mapping
+)
 
 sio_server = socketio.AsyncServer(
     async_mode="asgi",
@@ -12,22 +15,10 @@ sio_server = socketio.AsyncServer(
 
 sio_app = socketio.ASGIApp(socketio_server=sio_server, socketio_path="/sio/sockets")
 
-# 방 정보를 관리하는 딕셔너리: {room_id: [client_id1, client_id2, ...]}
-rooms = {}
-
-# 클라이언트 정보를 관리하는 딕셔너리: {client_id: {...정보...}}
-clients = {}
-
-# client_id와 sid를 매핑하는 딕셔너리: {client_id: sid}
-client_to_sid = {}
-
-# 재접속을 대기하는 클라이언트 정보 관리: {client_id: {...정보...}}
-disconnected_clients = {}
-DISCONNECT_TIMEOUT = 5  # 재접속을 대기하는 최대 시간(초)
-
 # 클라이언트 연결 이벤트 처리
 @sio_server.event
 async def connect(sid, environ):
+    # Query string에서 클라이언트 정보 파싱
     query_string = environ.get("QUERY_STRING", "")
     query_params = parse_qs(query_string)
     client_id = query_params.get("client_id", [None])[0]
@@ -40,186 +31,137 @@ async def connect(sid, environ):
         print(f"Connection rejected: client_id or room_id not provided")
         return False
 
-    # 재접속 처리
-    if client_id in disconnected_clients:
-        reconnect_event = disconnected_clients[client_id].get("reconnect_event")
-        reconnect_event.set()  # 재접속 이벤트 발생
-        disconnected_clients.pop(client_id, None)
-
-    # 새로운 방 생성
-    if room_id not in rooms:
-        rooms[room_id] = []
-
-    # 클라이언트 정보 등록
-    clients[client_id] = {
+    # Redis에 클라이언트 정보 저장
+    client_info = {
         "room_type": room_type,
         "room_id": room_id,
         "user_name": user_name,
         "position_x": 500,  # 기본 위치
         "position_y": 500,  # 기본 위치
-        "direction": 1,  # 기본 방향
+        "direction": 1,    # 기본 방향
         "img_url": "img_url",  # 기본 이미지 URL
     }
-    client_to_sid[client_id] = sid  # client_id와 sid 매핑
+    await set_client_info(client_id, client_info)
+    await set_sid_mapping(client_id, sid)
+    await add_to_room(room_id, client_id)
 
-        # 방에 클라이언트 추가
-    if client_id not in rooms[room_id]:
-        rooms[room_id].append(client_id)
-    
-    for client in rooms[room_id]:
-        # 기존 유저들에게 새 유저 정보 알림
+    # 동일 방의 모든 클라이언트에게 이동 정보 전송
+    room_id = client_info["room_id"]
+    clients_in_room = await get_room_clients(room_id)
+    for client in clients_in_room:
         await sio_server.emit(
             "SC_MOVEMENT_INFO",
             {
                 "client_id": client_id,
-                "user_name": user_name,
-                "position_x": clients[client_id]["position_x"],
-                "position_y": clients[client_id]["position_y"],
-                "direction": clients[client_id]["direction"],
+                "user_name": client_info["user_name"],
+                "position_x": client_info["position_x"],
+                "position_y": client_info["position_y"],
+                "direction": client_info["direction"],
             },
-            to=client_to_sid.get(client),
+            to=await get_client_id_by_sid(client)
         )
-
-        await sio_server.emit(
-            "SC_ENTER_USER ",
-            {
-                "client_id": client_id,
-            },
-            to=client_to_sid.get(client),
-        )
-
-        print(f"new user info sent to old user {clients[client_id]['user_name']}")
-
-        # 새 유저에게 기존 유저 정보 전달
-        await sio_server.emit(
-            "SC_ENTER_ROOM",
-            {
-                "user_id": client,
-                "user_name": clients[client]["user_name"],
-                "position_x": clients[client]["position_x"],
-                "position_y": clients[client]["position_y"],
-                "direction": clients[client]["direction"],
-            },
-            to=sid,
-        )
-
-        print(f"old user info sent to new user {clients[client]["user_name"]}")
-       
-
-
 
     print(f"{user_name} ({client_id}): connected to room {room_id}")
 
+# 클라이언트 메시지 처리
 @sio_server.event
 async def CS_CHAT(sid, data):
-    if not isinstance(data, dict):
-        print(f"Error: Invalid data format")
-        return
-
     # sid로 client_id 찾기
-    client_id = None
-    for cid, stored_sid in client_to_sid.items():
-        if stored_sid == sid:
-            client_id = cid
-            break
+    client_id = await get_client_id_by_sid(sid)
+    if not client_id:
+        print("Error: Invalid sid")
+        return
 
     message = data.get("message")
-
-    # 데이터 유효성 검증
-    if not message or client_id not in clients.keys():
-        print(f"Error: Missing fields or invalid client_id")
+    if not message:
+        print("Error: Missing message")
         return
 
-    # 동일 방의 모든 클라이언트에게 메시지 전송
-    room_id = clients[client_id]["room_id"]
-    for client in rooms[room_id]:
+    # 방에 있는 모든 클라이언트에게 메시지 전송
+    room_id = (await get_client_info(client_id)).get("room_id")
+    clients_in_room = await get_room_clients(room_id)
+    for client in clients_in_room:
+        client_info = await get_client_info(client)
         await sio_server.emit(
             "SC_CHAT",
-            {"user_name": clients[client_id]["user_name"], "message": message},
-            to=client_to_sid.get(client),
+            {"user_name": client_info["user_name"], "message": message},
+            to=await get_client_id_by_sid(client)
         )
 
-    print(f"{clients[client_id]['user_name']} sent CS_CHAT {message}")
+    print(f"{client_id} sent a message: {message}")
 
+# 클라이언트 이동 정보 처리
 @sio_server.event
 async def CS_MOVEMENT_INFO(sid, data):
-    if not isinstance(data, dict):
-        print(f"Error: Invalid data format")
-        return
-
     # sid로 client_id 찾기
-    client_id = None
-    for cid, stored_sid in client_to_sid.items():
-        if stored_sid == sid:
-            client_id = cid
-            break
-
-    # 데이터 및 클라이언트 존재 여부 검증
-    if not client_id or client_id not in clients.keys():
-        print(f"Error: Invalid or missing client_id")
+    client_id = await get_client_id_by_sid(sid)
+    if not client_id:
+        print("Error: Invalid sid")
         return
 
-    # 클라이언트 위치 정보 업데이트
+    # 이동 데이터 가져오기
     position_x = data.get("position_x")
     position_y = data.get("position_y")
-    direction = data.get("direction", clients[client_id]["direction"])
+    direction = data.get("direction")
 
     if position_x is None or position_y is None:
-        print(f"Error: Missing position data")
+        print("Error: Missing position data")
         return
 
-    clients[client_id].update({"position_x": position_x, "position_y": position_y, "direction": direction})
+    # Redis에 클라이언트 위치 정보 업데이트
+    client_info = await get_client_info(client_id)
+    client_info.update({"position_x": position_x, "position_y": position_y, "direction": direction})
+    await set_client_info(client_id, client_info)
 
-    print(f"{clients[client_id]['user_name']}: position ({position_x}, {position_y})")
-
-    # 동일 방의 모든 클라이언트에게 움직임 정보 전송
-    room_id = clients[client_id]["room_id"]
-    for client in rooms[room_id]:
+    # 동일 방의 모든 클라이언트에게 이동 정보 전송
+    room_id = client_info["room_id"]
+    clients_in_room = await get_room_clients(room_id)
+    for client in clients_in_room:
         await sio_server.emit(
             "SC_MOVEMENT_INFO",
             {
                 "client_id": client_id,
-                "user_name": clients[client_id]["user_name"],
+                "user_name": client_info["user_name"],
                 "position_x": position_x,
                 "position_y": position_y,
                 "direction": direction,
             },
-            to=client_to_sid.get(client),
+            to=await get_client_id_by_sid(client)
         )
 
+    print(f"{client_id} moved to ({position_x}, {position_y})")
+
+# 클라이언트 연결 해제 처리
 @sio_server.event
 async def disconnect(sid):
-    client_id = None
-    for cid, stored_sid in client_to_sid.items():
-        if stored_sid == sid:
-            client_id = cid
-            break
+    # sid로 client_id 찾기
+    client_id = await get_client_id_by_sid(sid)
+    if not client_id:
+        print("Error: Invalid sid")
+        return
 
-    if client_id:
-        client_to_sid.pop(client_id, None)
-        room_id = clients[client_id]["room_id"]
-        reconnect_event = asyncio.Event()
-        disconnected_clients[client_id] = {
-            "room_id": room_id,
-            "reconnect_event": reconnect_event,
-        }
+    # Redis에서 클라이언트 정보 가져오기
+    client_info = await get_client_info(client_id)
+    if not client_info or "room_id" not in client_info:
+        print(f"Error: Client info not found or missing room_id for client_id {client_id}")
+        await delete_sid_mapping(sid)
+        return
 
-        print(f"watching {client_id} for reconnection")
+    room_id = client_info["room_id"]
 
-        # 재접속 대기 처리
-        try:
-            await asyncio.wait_for(reconnect_event.wait(), timeout=DISCONNECT_TIMEOUT)
-        except asyncio.TimeoutError:
-            rooms[room_id].remove(client_id)
-            clients.pop(client_id, None)
-            disconnected_clients.pop(client_id, None)
+    # Redis에서 클라이언트 정보 삭제
+    await delete_sid_mapping(sid)
+    await remove_from_room(room_id, client_id)
+    await delete_client_info(client_id)
 
-            # 방에 남은 클라이언트에게 퇴장 정보 전달
-            for client in rooms[room_id]:
-                await sio_server.emit(
-                    "SC_LEAVE_USER",
-                    {"client_id": client_id},
-                    to=client_to_sid.get(client),
-                )
+    # 방에 남은 클라이언트에게 퇴장 정보 전송
+    clients_in_room = await get_room_clients(room_id)
+    for client in clients_in_room:
+        await sio_server.emit(
+            "SC_LEAVE_USER",
+            {"client_id": client_id},
+            to=await get_client_id_by_sid(client)
+        )
 
-            print(f"{client_id} disconnected completely from room {room_id}")
+    print(f"{client_id} disconnected completely from room {room_id}")
+
