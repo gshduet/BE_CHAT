@@ -157,15 +157,14 @@ async def CS_PICTURE_INFO(sid, data):
         print("Error: Invalid or missing client_id")
         return
 
+    # 클라이언트가 속한 room_id 가져오기
+    room_id = clients[client_id]["room_id"]
+
     print(f"{clients[client_id]['user_name']} sent CS_PICTURE_INFO to room {room_id}")
 
     # 방의 모든 클라이언트 정보 출력
-    for client in rooms[clients[client_id]["room_id"]]:
+    for client in rooms[room_id]:
         print(f"client_id: {client}, user_name: {clients[client]['user_name']}")
-    
-    
-    # 클라이언트가 속한 room_id 가져오기
-    room_id = clients[client_id]["room_id"]
 
     # 방에 있는 모든 클라이언트에게 SC_PICTURE_INFO 전송
     for client in rooms[room_id]:
