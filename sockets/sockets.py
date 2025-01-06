@@ -63,6 +63,35 @@ async def connect(sid, environ):
 
     print(f"{user_name} ({client_id}): connected to room {room_id}")
 
+# 같은 방에 있는 클라이언트들의 정보를 모두 전송(본인 정보 포함)
+@sio_server.event
+async def CS_USER_POSTION_INFO (sid, data):
+    # sid로 client_id 찾기
+    client_id = await get_client_id_by_sid(sid)
+    if not client_id:
+        print("Error: Invalid sid")
+        return
+
+    # 클라이언트의 room_id 찾기
+    client_info = await get_client_info(client_id)
+    room_id = client_info.get("room_id")
+    if not room_id:
+        print("Error: Client room_id not found")
+        return
+
+    # 방의 모든 클라이언트에게 SC_USER_POSTION_INFO 전송
+    clients_in_room = await get_room_clients(room_id)
+    for client in clients_in_room:
+        client_info = await get_client_info(client)
+        await sio_server.emit(
+            "SC_USER_POSTION_INFO",
+            {"client_id": client, "user_name": client_info["user_name"], "position_x": client_info["position_x"], "position_y": client_info["position_y"], "direction": client_info["direction"]},
+            to=await get_client_id_by_sid(client)
+        )
+
+    print(f"User data broadcast to room {room_id} by {client_id}")
+
+
 # 클라이언트 메시지 처리
 @sio_server.event
 async def CS_CHAT(sid, data):
