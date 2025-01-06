@@ -157,6 +157,13 @@ async def CS_PICTURE_INFO(sid, data):
         print("Error: Invalid or missing client_id")
         return
 
+    print(f"{clients[client_id]['user_name']} sent CS_PICTURE_INFO to room {room_id}")
+
+    # 방의 모든 클라이언트 정보 출력
+    for client in rooms[clients[client_id]["room_id"]]:
+        print(f"client_id: {client}, user_name: {clients[client]['user_name']}")
+    
+    
     # 클라이언트가 속한 room_id 가져오기
     room_id = clients[client_id]["room_id"]
 
@@ -171,7 +178,8 @@ async def CS_PICTURE_INFO(sid, data):
             to=client_to_sid.get(client),
         )
 
-    print(f"{clients[client_id]['user_name']} sent CS_PICTURE_INFO to room {room_id}")
+        # 받는 사람들 정보 출력
+        print(f"SC_PICTURE_INFO sent to {clients[client]['user_name']}")
 
 @sio_server.event
 async def CS_MOVEMENT_INFO(sid, data):
