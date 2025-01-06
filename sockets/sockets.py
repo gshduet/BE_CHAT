@@ -90,6 +90,36 @@ async def CS_CHAT(sid, data):
 
     print(f"{client_id} sent a message: {message}")
 
+@sio_server.event
+async def CS_PICTURE_INFO(sid, data):
+    client_id = await get_client_id_by_sid(sid)
+    if not client_id:
+        print("Error: Invalid sid")
+        return
+
+    picture_data = data.get("picture")
+    if not picture_data:
+        print("Error: Missing picture data")
+        return
+
+    # 클라이언트의 room_id 찾기
+    client_info = await get_client_info(client_id)
+    room_id = client_info.get("room_id")
+    if not room_id:
+        print("Error: Client room_id not found")
+        return
+
+    # 방의 모든 클라이언트에게 SC_PICTURE_INFO 전송
+    clients_in_room = await get_room_clients(room_id)
+    for client in clients_in_room:
+        await sio_server.emit(
+            "SC_PICTURE_INFO",
+            {"picture": picture_data},
+            to=await get_client_id_by_sid(client)
+        )
+
+    print(f"Picture data broadcasted to room {room_id} by {client_id}")
+
 # 클라이언트 이동 정보 처리
 @sio_server.event
 async def CS_MOVEMENT_INFO(sid, data):
