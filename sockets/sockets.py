@@ -21,7 +21,7 @@ client_to_sid = {}
 
 # 재접속을 대기하는 클라이언트 정보 관리: {client_id: {...정보...}}
 disconnected_clients = {}
-DISCONNECT_TIMEOUT = 5  # 재접속을 대기하는 최대 시간(초)
+DISCONNECT_TIMEOUT = 2  # 재접속을 대기하는 최대 시간(초)
 
 # 클라이언트 연결 이벤트 처리
 @sio_server.event
@@ -38,57 +38,69 @@ async def connect(sid, environ):
         print(f"Connection rejected: client_id or room_id not provided")
         return False
 
-    # 재접속 처리
-    if client_id in disconnected_clients:
+    # 재접속 클라이언트 구분
+    if client_id in disconnected_clients or client_id in clients.keys():
         reconnect_event = disconnected_clients[client_id].get("reconnect_event")
         reconnect_event.set()  # 재접속 이벤트 발생
         disconnected_clients.pop(client_id, None)
 
-    # 새로운 방 생성
+        # 기존 위치 데이터 유지
+        client_data = clients.get(client_id, {})
+        print(f"{user_name} ({client_id}): reconnected to room {room_id}")
+
+    else:
+        # 새로운 클라이언트 정보 초기화
+        client_data = {
+            "room_type": room_type,
+            "room_id": room_id,
+            "user_name": user_name,
+            "position_x": 500,
+            "position_y": 500,
+            "direction": 1,
+            "img_url": "img_url",
+        }
+
+
+        print(f"{user_name} ({client_id}): connected to room {room_id}")
+
+    # 클라이언트 정보 출력
+    print(f"{user_name} {client_data["user_name"]} {client_data["position_x"]} {client_data["position_y"]} {client_data["direction"]}")
+
+
+    clients[client_id] = client_data
+    client_to_sid[client_id] = sid
+
     if room_id not in rooms:
         rooms[room_id] = []
-
-    # 클라이언트 정보 등록
-    clients[client_id] = {
-        "room_type": room_type,
-        "room_id": room_id,
-        "user_name": user_name,
-        "position_x": 500,  # 기본 위치
-        "position_y": 500,  # 기본 위치
-        "direction": 1,  # 기본 방향
-        "img_url": "img_url",  # 기본 이미지 URL
-    }
-    client_to_sid[client_id] = sid  # client_id와 sid 매핑
-
-        # 방에 클라이언트 추가
     if client_id not in rooms[room_id]:
         rooms[room_id].append(client_id)
-    
+
+    # 기존 클라이언트에게 새 클라이언트 정보 알림
     for client in rooms[room_id]:
-        # 기존 유저들에게 새 유저 정보 알림
+        print(f"client: {clients[client]["user_name"]}")
+
         await sio_server.emit(
             "SC_MOVEMENT_INFO",
             {
                 "client_id": client_id,
-                "user_name": user_name,
-                "position_x": clients[client_id]["position_x"],
-                "position_y": clients[client_id]["position_y"],
-                "direction": clients[client_id]["direction"],
+                "user_name": client_data["user_name"],
+                "position_x": client_data["position_x"],
+                "position_y": client_data["position_y"],
+                "direction": client_data["direction"],
             },
             to=client_to_sid.get(client),
         )
-
         await sio_server.emit(
-            "SC_ENTER_USER ",
+            "SC_ENTER_USER",
             {
                 "client_id": client_id,
-            },
+                "user_name": client_data["user_name"],
+                "position_x": client_data["position_x"],
+                "position_y": client_data["position_y"],
+                "direction": client_data["direction"],
+             },
             to=client_to_sid.get(client),
         )
-
-        print(f"new user info sent to old user {clients[client_id]['user_name']}")
-
-        # 새 유저에게 기존 유저 정보 전달
         await sio_server.emit(
             "SC_ENTER_ROOM",
             {
@@ -101,12 +113,6 @@ async def connect(sid, environ):
             to=sid,
         )
 
-        print(f"old user info sent to new user {clients[client]["user_name"]}")
-       
-
-
-
-    print(f"{user_name} ({client_id}): connected to room {room_id}")
 
 @sio_server.event
 async def CS_CHAT(sid, data):
@@ -233,25 +239,25 @@ async def disconnect(sid):
         reconnect_event = asyncio.Event()
         disconnected_clients[client_id] = {
             "room_id": room_id,
+            "position_x": clients[client_id]["position_x"],
+            "position_y": clients[client_id]["position_y"],
+            "direction": clients[client_id]["direction"],
             "reconnect_event": reconnect_event,
         }
 
         print(f"watching {client_id} for reconnection")
 
-        # 재접속 대기 처리
         try:
             await asyncio.wait_for(reconnect_event.wait(), timeout=DISCONNECT_TIMEOUT)
         except asyncio.TimeoutError:
             rooms[room_id].remove(client_id)
-            clients.pop(client_id, None)
+            # clients.pop(client_id, None)
             disconnected_clients.pop(client_id, None)
 
-            # 방에 남은 클라이언트에게 퇴장 정보 전달
             for client in rooms[room_id]:
                 await sio_server.emit(
                     "SC_LEAVE_USER",
                     {"client_id": client_id},
                     to=client_to_sid.get(client),
                 )
-
             print(f"{client_id} disconnected completely from room {room_id}")
