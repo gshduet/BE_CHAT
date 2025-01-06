@@ -133,7 +133,7 @@ async def connect(sid, environ):
 
 # 같은 방에 있는 클라이언트들의 정보를 모두 전송(본인 정보 포함)
 @sio_server.event
-async def CS_USER_POSTION_INFO (sid, data):
+async def CS_USER_POSITION_INFO(sid, data):
 
     # sid로 client_id 찾기
     client_id = None
