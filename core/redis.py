@@ -46,17 +46,34 @@ async def get_room_clients(room_id):
     return await redis_client.smembers(ROOMS_KEY_TEMPLATE.format(room_id=room_id))
 
 # 미팅룸 관련 함수들
-async def add_to_meeting_room(room_id, client_id):
-    await redis_client.sadd(MEETING_ROOM_KEY_TEMPLATE.format(room_id=room_id), client_id)
+async def add_to_meeting_room(room_id, title, client_id):
+    if title:
+        await redis_client.hset(MEETING_ROOM_KEY_TEMPLATE.format(room_id=room_id), "title", title)
+    await redis_client.hset(MEETING_ROOM_KEY_TEMPLATE.format(room_id=room_id), client_id, "")
 
 async def remove_from_meeting_room(room_id, client_id):
-    await redis_client.srem(MEETING_ROOM_KEY_TEMPLATE.format(room_id=room_id), client_id)
+    await redis_client.hdel(MEETING_ROOM_KEY_TEMPLATE.format(room_id=room_id), client_id)
 
 async def get_meeting_room_clients(room_id):
-    return await redis_client.smembers(MEETING_ROOM_KEY_TEMPLATE.format(room_id=room_id))
+    data = await redis_client.hgetall(MEETING_ROOM_KEY_TEMPLATE.format(room_id=room_id))
+    return [key for key in data.keys() if key != "title"]
+
+async def get_meeting_room_title(room_id):
+    return await redis_client.hget(MEETING_ROOM_KEY_TEMPLATE.format(room_id=room_id), "title")
 
 async def delete_meeting_room(room_id):
     await redis_client.delete(MEETING_ROOM_KEY_TEMPLATE.format(room_id=room_id))
+
+# 모든 미팅룸의 정보를 가져오는 함수
+async def get_all_meeting_rooms():
+    room_keys = await redis_client.keys("meeting_room:*")
+    rooms = []
+    for room_key in room_keys:
+        room_id = room_key.split(":")[-1]
+        clients = await get_meeting_room_clients(room_id)
+        title = await get_meeting_room_title(room_id)
+        rooms.append({"room_id": room_id, "title": title, "clients": clients})
+    return rooms
 
 # 클라이언트 관련 함수들
 async def set_client_info(client_id, info):
