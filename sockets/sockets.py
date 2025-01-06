@@ -21,7 +21,7 @@ client_to_sid = {}
 
 # 재접속을 대기하는 클라이언트 정보 관리: {client_id: {...정보...}}
 disconnected_clients = {}
-DISCONNECT_TIMEOUT = 2  # 재접속을 대기하는 최대 시간(초)
+DISCONNECT_TIMEOUT = 3  # 재접속을 대기하는 최대 시간(초)
 
 # 클라이언트 연결 이벤트 처리
 @sio_server.event
@@ -68,7 +68,6 @@ async def connect(sid, environ):
     # 클라이언트 정보 출력
     print(f"{user_name} {client_data["user_name"]} {client_data["position_x"]} {client_data["position_y"]} {client_data["direction"]}")
 
-
     clients[client_id] = client_data
     client_to_sid[client_id] = sid
 
@@ -76,47 +75,6 @@ async def connect(sid, environ):
         rooms[room_id] = []
     if client_id not in rooms[room_id]:
         rooms[room_id].append(client_id)
-
-    # 새 클라이언트에게 초기화 정보 전송
-    await sio_server.emit(
-        "SC_ENTER_ROOM",
-        {
-            "client_id": client_id,
-            "user_name": client_data["user_name"],
-            "position_x": client_data["position_x"],
-            "position_y": client_data["position_y"],
-            "direction": client_data["direction"],
-        },
-        to=sid,
-    )
-
-    # 기존 클라이언트에게 새 클라이언트 정보 알림
-    for client in rooms[room_id]:
-
-        # 추후 SC_MOVEMENT_INFO, SC_ENTER_ROOM 중 하나만 사용할 것
-        await sio_server.emit(
-            "SC_MOVEMENT_INFO",
-            {
-                "client_id": client_id,
-                "user_name": client_data["user_name"],
-                "position_x": client_data["position_x"],
-                "position_y": client_data["position_y"],
-                "direction": client_data["direction"],
-            },
-            to=client_to_sid.get(client),
-        )
-
-        await sio_server.emit(
-            "SC_ENTER_ROOM",
-            {
-                "client_id": client_id,
-                "user_name": client_data["user_name"],
-                "position_x": client_data["position_x"],
-                "position_y": client_data["position_y"],
-                "direction": client_data["direction"],
-            },
-            to=client_to_sid.get(client),
-        )
 
     print(f"{user_name} ({client_id}): connected to room {room_id}")
 
@@ -165,8 +123,6 @@ async def CS_USER_POSITION_INFO(sid, data):
             },
             to=sid,
         )
-
-
 
     print(f"{clients[client_id]['user_name']} sent CS_USER_POSITION_INFO to room {room_id}")
 
