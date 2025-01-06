@@ -4,7 +4,7 @@ import asyncio
 
 sio_server = socketio.AsyncServer(
     async_mode="asgi",
-    cors_allowed_origins=["https://jgtower.com"],  # 특정 도메인만 허용
+    cors_allowed_origins=[],  # 특정 도메인만 허용
     cors_credentials=True,  # 쿠키 기반 인증 허용
 )
 
