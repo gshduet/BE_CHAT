@@ -140,6 +140,40 @@ async def CS_CHAT(sid, data):
     print(f"{clients[client_id]['user_name']} sent CS_CHAT {message}")
 
 @sio_server.event
+async def CS_PICTURE_INFO(sid, data):
+    if not isinstance(data, dict):
+        print("Error: Invalid data format")
+        return
+
+    # sid로 client_id 찾기
+    client_id = None
+    for cid, stored_sid in client_to_sid.items():
+        if stored_sid == sid:
+            client_id = cid
+            break
+
+    # 데이터 및 클라이언트 존재 여부 검증
+    if not client_id or client_id not in clients.keys():
+        print("Error: Invalid or missing client_id")
+        return
+
+    # 클라이언트가 속한 room_id 가져오기
+    room_id = clients[client_id]["room_id"]
+
+    # 방에 있는 모든 클라이언트에게 SC_PICTURE_INFO 전송
+    for client in rooms[room_id]:
+        await sio_server.emit(
+            "SC_PICTURE_INFO",
+            {
+                "client_id": client_id,
+                "data": data,  # 전달받은 데이터를 그대로 전송
+            },
+            to=client_to_sid.get(client),
+        )
+
+    print(f"{clients[client_id]['user_name']} sent CS_PICTURE_INFO to room {room_id}")
+
+@sio_server.event
 async def CS_MOVEMENT_INFO(sid, data):
     if not isinstance(data, dict):
         print(f"Error: Invalid data format")
