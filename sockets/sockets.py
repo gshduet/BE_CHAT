@@ -50,7 +50,7 @@ async def connect(sid, environ):
     clients_in_room = await get_room_clients(room_id)
     for client in clients_in_room:
         await sio_server.emit(
-            "SC_MOVEMENT_INFO",
+            "SC_USER_POSITION_INFO",
             {
                 "client_id": client_id,
                 "user_name": client_info["user_name"],
