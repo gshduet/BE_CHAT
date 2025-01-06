@@ -128,6 +128,36 @@ async def CS_USER_POSITION_INFO(sid, data):
 
 
 @sio_server.event
+async def CS_LEAVE_USER(sid, data):
+    # sid로 client_id 찾기
+    client_id = None
+    for cid, stored_sid in client_to_sid.items():
+        if stored_sid == sid:
+            client_id = cid
+            break
+
+    room_id = data.get("room_id")
+    
+    # 데이터 및 클라이언트 존재 여부 검증
+    if not client_id or client_id not in clients.keys():
+        print(f"Error: Invalid or missing client_id")
+        return
+    
+    # 해당 룸에서 클라이언트 제거
+    if client_id in rooms[room_id]:
+        rooms[room_id].remove(client_id)   
+    
+    # 방에 있는 모든 클라이언트에게 SC_LEAVE_USER 전송
+    for client in rooms[room_id]:
+        await sio_server.emit(
+            "SC_LEAVE_USER",
+            {"client_id": client_id},
+            to=client_to_sid.get(client),
+        )
+    
+
+
+@sio_server.event
 async def CS_CHAT(sid, data):
     if not isinstance(data, dict):
         print(f"Error: Invalid data format")
@@ -263,7 +293,9 @@ async def disconnect(sid):
         try:
             await asyncio.wait_for(reconnect_event.wait(), timeout=DISCONNECT_TIMEOUT)
         except asyncio.TimeoutError:
-            rooms[room_id].remove(client_id)
+            if client_id in rooms[room_id]:
+                rooms[room_id].remove(client_id)
+                
             disconnected_clients.pop(client_id, None)
 
             for client in rooms[room_id]:
