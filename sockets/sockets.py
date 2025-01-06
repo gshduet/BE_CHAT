@@ -77,8 +77,23 @@ async def connect(sid, environ):
     if client_id not in rooms[room_id]:
         rooms[room_id].append(client_id)
 
+    # 새 클라이언트에게 초기화 정보 전송
+    await sio_server.emit(
+        "SC_ENTER_ROOM",
+        {
+            "client_id": client_id,
+            "user_name": client_data["user_name"],
+            "position_x": client_data["position_x"],
+            "position_y": client_data["position_y"],
+            "direction": client_data["direction"],
+        },
+        to=sid,
+    )
+
     # 기존 클라이언트에게 새 클라이언트 정보 알림
     for client in rooms[room_id]:
+
+        # 추후 SC_MOVEMENT_INFO, SC_ENTER_ROOM 중 하나만 사용할 것
         await sio_server.emit(
             "SC_MOVEMENT_INFO",
             {
@@ -90,10 +105,15 @@ async def connect(sid, environ):
             },
             to=client_to_sid.get(client),
         )
+
         await sio_server.emit(
-            "SC_ENTER_USER",
+            "SC_ENTER_ROOM",
             {
                 "client_id": client_id,
+                "user_name": client_data["user_name"],
+                "position_x": client_data["position_x"],
+                "position_y": client_data["position_y"],
+                "direction": client_data["direction"],
             },
             to=client_to_sid.get(client),
         )
