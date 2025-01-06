@@ -117,17 +117,6 @@ async def connect(sid, environ):
             },
             to=client_to_sid.get(client),
         )
-        await sio_server.emit(
-            "SC_ENTER_ROOM",
-            {
-                "user_id": client,
-                "user_name": clients[client]["user_name"],
-                "position_x": clients[client]["position_x"],
-                "position_y": clients[client]["position_y"],
-                "direction": clients[client]["direction"],
-            },
-            to=sid,
-        )
 
     print(f"{user_name} ({client_id}): connected to room {room_id}")
 
@@ -150,8 +139,8 @@ async def CS_USER_POSITION_INFO(sid, data):
     # 클라이언트가 속한 room_id 가져오기
     room_id = clients[client_id]["room_id"]
 
-    # 방에 있는 모든 클라이언트에게 SC_USER_POSITION_INFO 전송
     for client in rooms[room_id]:
+         # 방에 있는 모든 클라이언트에게 SC_USER_POSITION_INFO 전송  
         await sio_server.emit(
             "SC_USER_POSITION_INFO",
             {
@@ -163,6 +152,21 @@ async def CS_USER_POSITION_INFO(sid, data):
             },
             to=client_to_sid.get(client),
         )
+
+        # 방에 있는 모든 클라이언트들의 정보를 전송
+        await sio_server.emit(
+            "SC_USER_POSITION_INFO",
+            {
+                "client_id": client,
+                "user_name": clients[client]["user_name"],
+                "position_x": clients[client]["position_x"],
+                "position_y": clients[client]["position_y"],
+                "direction": clients[client]["direction"],
+            },
+            to=sid,
+        )
+
+
 
     print(f"{clients[client_id]['user_name']} sent CS_USER_POSITION_INFO to room {room_id}")
 
