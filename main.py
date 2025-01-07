@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sockets.sockets import sio_app
+import asyncio
+
+from sockets.sockets import sio_app, process_connection_queue
 from core.redis import init_redis
 
 app = FastAPI()
@@ -18,6 +20,9 @@ app.add_middleware(
 async def startup_event():
     # 서버 시작 시 Redis 초기화
     await init_redis()
+
+    # 연결 요청 큐 처리
+    asyncio.create_task(process_connection_queue())
 
 @app.get("/")
 async def home():

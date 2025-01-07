@@ -21,9 +21,21 @@ DISCONNECT_TIMEOUT = 3
 
 sio_app = socketio.ASGIApp(socketio_server=sio_server, socketio_path="/sio/sockets")
 
-# 클라이언트 연결 이벤트 처리
-@sio_server.event
-async def connect(sid, environ):
+connection_queue = asyncio.Queue()  # FIFO 큐 생성
+
+# 큐를 처리하는 작업
+async def process_connection_queue():
+    while True:
+        sid, environ = await connection_queue.get()
+        try:
+            await handle_connection(sid, environ)  # 연결 요청 처리
+        except Exception as e:
+            print(f"Error handling connection: {e}")
+        finally:
+            connection_queue.task_done()
+
+# 연결 요청 처리 함수
+async def handle_connection(sid, environ):
     query_string = environ.get("QUERY_STRING", "")
     query_params = parse_qs(query_string)
     client_id = query_params.get("client_id", [None])[0]
@@ -31,8 +43,9 @@ async def connect(sid, environ):
     room_id = query_params.get("room_id", [None])[0]
 
     if not client_id or not room_id:
+        print(f"Invalid connection parameters: {sid}")
         return False
-    
+
     # 재접속 클라이언트 처리
     disconnected_client = await get_disconnected_client(client_id)
     if disconnected_client:
@@ -40,9 +53,7 @@ async def connect(sid, environ):
         await set_client_info(client_id, disconnected_client)
         await set_sid_mapping(client_id, sid)
         await add_to_room(room_id, client_id)
-
         print(f"{user_name} ({client_id}) reconnected to room {room_id}")
-    
     else:
         client_data = {
             "room_id": room_id,
@@ -51,13 +62,18 @@ async def connect(sid, environ):
             "position_y": 500,
             "direction": 1,
         }
-
         await set_client_info(client_id, client_data)
         await set_sid_mapping(client_id, sid)
         await add_to_room(room_id, client_id)
-
         print(f"{user_name} ({client_id}) connected to room {room_id}")
 
+# 큐에 추가하는 이벤트
+@sio_server.event
+async def connect(sid, environ):
+    await connection_queue.put((sid, environ))  # 연결 요청을 큐에 추가
+    print(f"Connection request enqueued: {sid}")
+
+    
 # 같은 방에 있는 클라이언트들의 정보를 모두 전송(본인 정보 포함)
 @sio_server.event
 async def CS_USER_POSITION_INFO(sid, data):
