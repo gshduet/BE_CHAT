@@ -50,7 +50,6 @@ async def connect(sid, environ):
             "position_x": 500,
             "position_y": 500,
             "direction": 1,
-            "sid": sid,
         }
 
         await set_client_info(client_id, client_data)
@@ -64,20 +63,25 @@ async def connect(sid, environ):
 async def CS_USER_POSITION_INFO(sid, data):
     new_client_id = await get_client_id_by_sid(sid)
     if not new_client_id:
+        print(f"Error: SID {sid} not mapped to any client ID.")
         return
+    
     new_client_info = await get_client_info(new_client_id)
     room_id = new_client_info.get("room_id")
 
 
     for client in await get_room_clients(room_id):
         client_info = await get_client_info(client)
+        if not client_info:
+            # print(f"Error: Missing client_info for client_id {client}")
+            continue
 
         # 기존 클라이언트에게 새로운 클라이언트 정보 전송
         await sio_server.emit(
             "SC_USER_POSITION_INFO",
             {
                 "client_id": new_client_id,
-                "user_name": new_client_info.get("user_name"),
+                "user_name": new_client_info.get("user_name", "Unknown"),
                 "position_x": int(new_client_info.get("position_x")),
                 "position_y": int(new_client_info.get("position_y")),
                 "direction": int(new_client_info.get("direction")),
@@ -90,10 +94,10 @@ async def CS_USER_POSITION_INFO(sid, data):
             "SC_USER_POSITION_INFO",
             {
                 "client_id": client,
-                "user_name": client_info["user_name"],
-                "position_x": int(client_info["position_x"]),
-                "position_y": int(client_info["position_y"]),
-                "direction": int(client_info["direction"]),
+                "user_name": client_info.get("user_name", "Unknown"),
+                "position_x": int(client_info.get("position_x")),
+                "position_y": int(client_info.get("position_y")),
+                "direction": int(client_info.get("direction")),
             },
             to=sid,
         )
