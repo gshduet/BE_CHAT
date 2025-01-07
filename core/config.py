@@ -1,12 +1,12 @@
 from functools import lru_cache
 
-from boto3 import client
 from dotenv import load_dotenv
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 load_dotenv()
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -32,28 +32,27 @@ class Settings(BaseSettings):
     aws_rds_db_port: str = Field(..., env="AWS_RDS_DB_PORT")
 
     aws_elasticache_endpoint: str = Field(..., env="AWS_ELASTICACHE_ENDPOINT")
-    aws_elasticache_port: str = Field(..., env="AWS_ELASTICACHE_PORT")
+    aws_elasticache_port: int = Field(..., env="AWS_ELASTICACHE_PORT")
+    redis_socket_timeout: float = Field(5.0, env="REDIS_SOCKET_TIMEOUT")
+    redis_socket_connect_timeout: float = Field(2.0, env="REDIS_SOCKET_CONNECT_TIMEOUT")
+    redis_retry_on_timeout: bool = Field(True, env="REDIS_RETRY_ON_TIMEOUT")
+    redis_max_connections: int = Field(10, env="REDIS_MAX_CONNECTIONS")
 
-    aws_s3_bucket_name: str = Field(..., env="AWS_S3_BUCKET_NAME")
+    rooms_key_template: str = Field(..., env="ROOMS_KEY_TEMPLATE")
+    client_key_template: str = Field(..., env="CLIENT_KEY_TEMPLATE")
+    sid_key_template: str = Field(..., env="SID_KEY_TEMPLATE")
+    disconnected_client_key_template: str = Field(
+        ..., env="DISCONNECTED_CLIENT_KEY_TEMPLATE"
+    )
+    meeting_room_key_template: str = Field(..., env="MEETING_ROOM_KEY_TEMPLATE")
+    client_sid_key_template: str = Field(..., env="CLIENT_SID_KEY_TEMPLATE")
 
     def get_db_url(self) -> str:
         return f"postgresql://{self.aws_rds_db_username}:{self.aws_rds_db_password}@{self.aws_rds_db_host}:{self.aws_rds_db_port}/{self.aws_rds_db_name}"
 
-    def get_aws_s3_client(self) -> client:
-        return client(
-            "s3",
-            aws_access_key_id=self.aws_access_key_id,
-            aws_secret_access_key=self.aws_secret_access_key,
-            region_name=self.aws_region,
-        )
-
     @property
     def db_url(self) -> str:
         return self.get_db_url()
-
-    @property
-    def aws_s3_client(self) -> client:
-        return self.get_aws_s3_client()
 
 
 @lru_cache
