@@ -2,40 +2,24 @@ import redis.asyncio as redis
 from dotenv import load_dotenv
 import os
 
-# .env 파일 로드
 load_dotenv()
 
-# Redis 호스트, 포트, DB 번호
 REDIS_HOST = os.environ['REDIS_HOST']
 REDIS_PORT = int(os.environ['REDIS_PORT'])
 REDIS_DB = int(os.environ['REDIS_DB'])
-
 redis_client = None
-
-# Redis 키 템플릿을 환경변수에서만 로드
 ROOMS_KEY_TEMPLATE = os.environ['ROOMS_KEY_TEMPLATE']
 CLIENT_KEY_TEMPLATE = os.environ['CLIENT_KEY_TEMPLATE']
 SID_KEY_TEMPLATE = os.environ['SID_KEY_TEMPLATE']
 DISCONNECTED_CLIENT_KEY_TEMPLATE = os.environ['DISCONNECTED_CLIENT_KEY_TEMPLATE']
 MEETING_ROOM_KEY_TEMPLATE = os.environ['MEETING_ROOM_KEY_TEMPLATE']
+CLIENT_SID_KEY_TEMPLATE = os.environ['CLIENT_SID_KEY_TEMPLATE']
 
-# Redis 초기화 함수
 async def init_redis():
     global redis_client
-    try:
-        redis_client = redis.Redis(
-            host=REDIS_HOST,
-            port=REDIS_PORT,
-            db=REDIS_DB,
-            decode_responses=True
-        )
-        if await redis_client.ping():
-            print("Redis connected")
-    except Exception as e:
-        print(f"Failed to connect to Redis: {e}")
-        redis_client = None
+    redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB, decode_responses=True)
+    await redis_client.ping()
 
-# 방 관련 함수들
 async def add_to_room(room_id, client_id):
     await redis_client.sadd(ROOMS_KEY_TEMPLATE.format(room_id=room_id), client_id)
 
@@ -45,7 +29,6 @@ async def remove_from_room(room_id, client_id):
 async def get_room_clients(room_id):
     return await redis_client.smembers(ROOMS_KEY_TEMPLATE.format(room_id=room_id))
 
-# 미팅룸 관련 함수들
 async def add_to_meeting_room(room_id, title, client_id):
     if title:
         await redis_client.hset(MEETING_ROOM_KEY_TEMPLATE.format(room_id=room_id), "title", title)
@@ -56,7 +39,7 @@ async def remove_from_meeting_room(room_id, client_id):
 
 async def get_meeting_room_clients(room_id):
     data = await redis_client.hgetall(MEETING_ROOM_KEY_TEMPLATE.format(room_id=room_id))
-    return [key for key in data.keys() if key != "title"]
+    return [k for k in data.keys() if k != "title"]
 
 async def get_meeting_room_title(room_id):
     return await redis_client.hget(MEETING_ROOM_KEY_TEMPLATE.format(room_id=room_id), "title")
@@ -64,18 +47,16 @@ async def get_meeting_room_title(room_id):
 async def delete_meeting_room(room_id):
     await redis_client.delete(MEETING_ROOM_KEY_TEMPLATE.format(room_id=room_id))
 
-# 모든 미팅룸의 정보를 가져오는 함수
 async def get_all_meeting_rooms():
     room_keys = await redis_client.keys("meeting_room:*")
     rooms = []
-    for room_key in room_keys:
-        room_id = room_key.split(":")[-1]
-        clients = await get_meeting_room_clients(room_id)
+    for rk in room_keys:
+        room_id = rk.split(":")[-1]
         title = await get_meeting_room_title(room_id)
+        clients = await get_meeting_room_clients(room_id)
         rooms.append({"room_id": room_id, "title": title, "clients": clients})
     return rooms
 
-# 클라이언트 관련 함수들
 async def set_client_info(client_id, info):
     await redis_client.hset(CLIENT_KEY_TEMPLATE.format(client_id=client_id), mapping=info)
 
@@ -85,17 +66,23 @@ async def get_client_info(client_id):
 async def delete_client_info(client_id):
     await redis_client.delete(CLIENT_KEY_TEMPLATE.format(client_id=client_id))
 
-# SID 관련 함수들
 async def set_sid_mapping(client_id, sid):
     await redis_client.set(SID_KEY_TEMPLATE.format(sid=sid), client_id)
+    await redis_client.set(CLIENT_SID_KEY_TEMPLATE.format(client_id=client_id), sid)
 
 async def get_client_id_by_sid(sid):
     return await redis_client.get(SID_KEY_TEMPLATE.format(sid=sid))
 
-async def delete_sid_mapping(sid):
-    await redis_client.delete(SID_KEY_TEMPLATE.format(sid=sid))
+async def get_sid_by_client_id(client_id):
+    return await redis_client.get(CLIENT_SID_KEY_TEMPLATE.format(client_id=client_id))
 
-# 재접속 대기 클라이언트 관련 함수들
+async def delete_sid_mapping(sid):
+    client_id = await redis_client.get(SID_KEY_TEMPLATE.format(sid=sid))
+    await redis_client.delete(SID_KEY_TEMPLATE.format(sid=sid))
+    if client_id:
+        await redis_client.delete(CLIENT_SID_KEY_TEMPLATE.format(client_id=client_id))
+
+# 재접속 시 사용
 async def set_disconnected_client(client_id, info):
     await redis_client.hset(DISCONNECTED_CLIENT_KEY_TEMPLATE.format(client_id=client_id), mapping=info)
 
