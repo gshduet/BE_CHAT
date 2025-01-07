@@ -13,6 +13,8 @@ sio_server = socketio.AsyncServer(
     async_mode="asgi",
     cors_allowed_origins=[],
     cors_credentials=True,
+    ping_timeout=20,  # 클라이언트 응답 대기
+    ping_interval=25  # Ping 메시지 전송 간격
 )
 
 DISCONNECT_TIMEOUT = 3
@@ -277,13 +279,17 @@ async def disconnect(sid):
         return
     
     client_data = await get_client_info(client_id)
+    if not client_data:  
+        print(f"Error: No client data for SID {sid}")
+        return
+    
     room_id = client_data.get("room_id")
 
     reconnect_event = asyncio.Event()
     print(f"watching {client_id} for reconnection")
 
     # 재접속 대기 클라이언트로 이동
-    await set_disconnected_client(client_id, client_data)
+    await set_disconnected_client(client_id, client_data)  # 빈 데이터 처리
     try:
         await asyncio.wait_for(reconnect_event.wait(), timeout=DISCONNECT_TIMEOUT)
     except asyncio.TimeoutError:

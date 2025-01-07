@@ -84,7 +84,13 @@ async def delete_sid_mapping(sid):
 
 # 재접속 시 사용
 async def set_disconnected_client(client_id, info):
-    await redis_client.hset(DISCONNECTED_CLIENT_KEY_TEMPLATE.format(client_id=client_id), mapping=info)
+    if not info:
+        print(f"Error: Cannot set disconnected client {client_id}, info is empty")
+        return
+    try:
+        await redis_client.hset(DISCONNECTED_CLIENT_KEY_TEMPLATE.format(client_id=client_id), mapping=info)
+    except Exception as e:
+        print(f"Redis Error: {e}")
 
 async def get_disconnected_client(client_id):
     return await redis_client.hgetall(DISCONNECTED_CLIENT_KEY_TEMPLATE.format(client_id=client_id))
