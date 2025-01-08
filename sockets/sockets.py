@@ -302,6 +302,8 @@ async def CS_MOVEMENT_INFO(sid, data):
 
         # 클라이언트 정보 가져오기
         client_info = await get_client_info(client_id, redis_client)
+        if not client_info:
+            print(f"Error: Missing client_info for client_id {client_id}")
             return
 
         user_name = client_info.get("user_name")
