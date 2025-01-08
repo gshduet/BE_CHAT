@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sockets.sockets import sio_app
+import asyncio
+
+from sockets.sockets import sio_app, process_connection_requests
 
 app = FastAPI()
 app.mount("/sio", app=sio_app)
@@ -13,6 +15,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(process_connection_requests())
 
 @app.get("/health")
 async def health():

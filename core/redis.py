@@ -1,6 +1,8 @@
 from redis.asyncio import Redis
 from core.config import settings
 
+import asyncio
+
 ROOMS_KEY_TEMPLATE = settings.rooms_key_template
 CLIENT_KEY_TEMPLATE = settings.client_key_template
 SID_KEY_TEMPLATE = settings.sid_key_template
@@ -91,6 +93,11 @@ async def get_client_id_by_sid(sid: str, redis_client: Redis):
 async def get_sid_by_client_id(client_id: str, redis_client: Redis):
     return await redis_client.get(CLIENT_SID_KEY_TEMPLATE.format(client_id=client_id))
 
+# 저장된 sid들을 반환하는 함수
+async def get_all_sids(redis_client: Redis):
+    sids = await redis_client.keys("sid:*")
+    return [sid.split(":")[-1] for sid in sids]
+
 
 async def delete_sid_mapping(sid: str, redis_client: Redis):
     client_id = await redis_client.get(SID_KEY_TEMPLATE.format(sid=sid))
@@ -121,3 +128,16 @@ async def delete_disconnected_client(client_id: str, redis_client: Redis):
     await redis_client.delete(
         DISCONNECTED_CLIENT_KEY_TEMPLATE.format(client_id=client_id)
     )
+
+# redis 큐 관련 함수
+async def enqueue_connection_request(redis_client: Redis, sid: str, client_id: str, room_id: str, user_name: str, event: asyncio.Event):
+    await redis_client.rpush("connection_requests", f"{sid}|{client_id}|{room_id}|{user_name}")
+
+
+async def dequeue_connection_request(redis_client: Redis):
+    request = await redis_client.lpop("connection_requests")
+    if request:
+        sid, client_id, room_id, user_name = request.split("|")
+        return {"sid": sid, "client_id": client_id, "room_id": room_id, "user_name": user_name}
+    return None
+
