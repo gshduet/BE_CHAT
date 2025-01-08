@@ -272,6 +272,8 @@ async def CS_PICTURE_INFO(sid, data):
 
         # 방에 있는 모든 클라이언트에게 SC_PICTURE_INFO 전송
         for client in await get_room_clients(room_id, redis_client):
+            if client == client_id:
+                continue
             client_sid = await get_sid_by_client_id(client, redis_client)
             await sio_server.emit(
                 "SC_PICTURE_INFO",
@@ -344,8 +346,6 @@ async def CS_MOVEMENT_INFO(sid, data):
                 },
                 to=client_sid,
             )
-        await handle_view_list_update(sid, data, redis_client, emit_callback)
-
 
 @sio_server.event
 async def disconnect(sid):
