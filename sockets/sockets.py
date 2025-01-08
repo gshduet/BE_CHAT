@@ -100,9 +100,10 @@ async def connect(sid, environ):
     async for redis_client in get_redis():
         existing_sid = await get_sid_by_client_id(client_id, redis_client)
         if existing_sid and existing_sid != sid:
-            await sio_server.disconnect(existing_sid)
-            await delete_sid_mapping(existing_sid, redis_client)
-            print(f"Disconnected existing SID {existing_sid} for client {client_id}")
+            await sio_server.disconnect(sid)
+            await delete_sid_mapping(sid, redis_client)
+            print(f"Disconnected NEW SID {sid} for client {user_name}")
+            return
 
         event = asyncio.Event()
 
@@ -301,8 +302,6 @@ async def CS_MOVEMENT_INFO(sid, data):
 
         # 클라이언트 정보 가져오기
         client_info = await get_client_info(client_id, redis_client)
-        if not client_info:
-            print(f"Error: Missing client_info for client_id {client_id}")
             return
 
         user_name = client_info.get("user_name")
@@ -343,6 +342,7 @@ async def CS_MOVEMENT_INFO(sid, data):
                 },
                 to=client_sid,
             )
+        await handle_view_list_update(sid, data, redis_client, emit_callback)
 
 
 @sio_server.event
