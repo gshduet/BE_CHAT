@@ -173,9 +173,6 @@ async def CS_CHAT(sid, data):
 
         # 방에 있는 모든 클라이언트에게 메시지 전송
         for client in await get_room_clients(room_id, redis_client):
-            if client == client_id:
-                continue
-
             client_sid = await get_sid_by_client_id(client, redis_client)
             await sio_server.emit(
                 "SC_CHAT",
