@@ -110,10 +110,11 @@ async def get_all_meeting_rooms(redis_client: Redis):
 
 
 @with_redis_retry
-async def set_client_info(client_id: str, info: dict, redis_client: Redis):
-    await redis_client.hset(
-        CLIENT_KEY_TEMPLATE.format(client_id=client_id), mapping=info
-    )
+async def set_client_info(client_id: str, info: dict, redis_client):
+    # 모든 값을 문자열로 변환
+    info = {key: str(value) if not isinstance(value, (bytes, str, int, float)) else value for key, value in info.items()}
+    await redis_client.hset(CLIENT_KEY_TEMPLATE.format(client_id=client_id), mapping=info)
+
 
 
 @with_redis_retry

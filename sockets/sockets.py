@@ -21,6 +21,11 @@ from core.redis import (
     dequeue_connection_request,
 )
 
+from core.movement import (
+    update_movement,
+    handle_view_list_update,
+)
+
 sio_server = socketio.AsyncServer(
     async_mode="asgi",
     cors_allowed_origins=[],
@@ -289,61 +294,13 @@ async def CS_PICTURE_INFO(sid, data):
 
 @sio_server.event
 async def CS_MOVEMENT_INFO(sid, data):
-    if not isinstance(data, dict):
-        print("Error: Invalid data format")
-        return
-
     async for redis_client in get_redis():
-        # sid로 client_id 찾기
-        client_id = await get_client_id_by_sid(sid, redis_client)
-        if not client_id:
-            print("Error: Invalid or missing client_id")
-            return
+        async def emit_callback(client_id, payload):
+            client_sid = await get_sid_by_client_id(client_id, redis_client)
+            if client_sid:
+                await sio_server.emit("SC_MOVEMENT_INFO", payload, to=client_sid)
 
-        # 클라이언트 정보 가져오기
-        client_info = await get_client_info(client_id, redis_client)
-        if not client_info:
-            print(f"Error: Missing client_info for client_id {client_id}")
-            return
-
-        user_name = client_info.get("user_name")
-
-        # 위치 데이터 업데이트
-        position_x = data.get("position_x")
-        position_y = data.get("position_y")
-        direction = data.get("direction")
-
-        if position_x is None or position_y is None:
-            print("Error: Missing position data")
-            return
-
-        # Redis에 업데이트된 정보 저장
-        client_info.update(
-            {"position_x": position_x, "position_y": position_y, "direction": direction}
-        )
-        await set_client_info(client_id, client_info, redis_client)
-
-        print(f"{client_info['user_name']}:({position_x}, {position_y})")
-
-        # 동일 방의 모든 클라이언트에게 움직임 정보 전송
-        room_id = client_info.get("room_id")
-        if not room_id:
-            print(f"Error: Missing room_id for client_id {client_id}")
-            return
-
-        for client in await get_room_clients(room_id, redis_client):
-            client_sid = await get_sid_by_client_id(client, redis_client)
-            await sio_server.emit(
-                "SC_MOVEMENT_INFO",
-                {
-                    "client_id": client_id,
-                    "user_name": user_name,
-                    "position_x": position_x,
-                    "position_y": position_y,
-                    "direction": direction,
-                },
-                to=client_sid,
-            )
+        await update_movement(sid, data, redis_client, emit_callback)
         await handle_view_list_update(sid, data, redis_client, emit_callback)
 
 
