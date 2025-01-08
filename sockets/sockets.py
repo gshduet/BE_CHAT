@@ -73,7 +73,6 @@ async def process_connection_requests():
                     print(f"Processed connection: sid:{sid}, client_id:{client_id}, room_id:{room_id}, user_name:{user_name}")
                 
                 await set_client_info(client_id, client_data, redis_client)
-                # await set_sid_mapping(client_id, sid, redis_client)
                 await add_to_room(room_id, client_id, redis_client)
 
                 # 이벤트 객체 완료 알림
@@ -82,7 +81,7 @@ async def process_connection_requests():
                     event.set()
                     print(f"Event for SID {sid} set.")
 
-            await asyncio.sleep(1)  # cpu 과부하 방지..
+            await asyncio.sleep(0.1)  # cpu 과부하 방지..
 
 
 # 클라이언트 연결 이벤트 처리
@@ -166,6 +165,13 @@ async def CS_USER_POSITION_INFO(sid, data):
                 to=sid,
             )
 
+# 창을 닫은 유저에 대한 처리
+@sio_server.event
+async def CS_USER_DESTRUCTION(sid, data):
+    async for redis_client in get_redis():
+        delete_client_info(data.get("client_id"), redis_client)
+        delete_sid_mapping(sid, redis_client)
+        delete_disconnected_client(data.get("client_id"), redis_client)
 
 @sio_server.event
 async def CS_LEAVE_USER(sid, data):
@@ -355,42 +361,24 @@ async def disconnect(sid):
 
             room_id = client_data.get("room_id")
 
-            reconnect_event = asyncio.Event()
             print(f"watching {client_id} for reconnection")
 
              # 클라이언트 정보 삭제
             await delete_sid_mapping(sid, redis_client)
-            await delete_client_info(client_id, redis_client)
 
             # 재접속 대기 클라이언트로 이동
             await set_disconnected_client(client_id, client_data, redis_client)
-            try:
-                await asyncio.wait_for(reconnect_event.wait(), timeout=DISCONNECT_TIMEOUT)
-            except asyncio.TimeoutError:
-                print(f"Timeout waiting for reconnection for client {client_id}")
+            await remove_from_room(room_id, client_id, redis_client)
 
-                # sid와 client_id 매핑 정보에 client_id가 있는지 확인
-                if await get_client_id_by_sid(sid, redis_client):
-                    # 있으면 해당 client_id는 다른 sid에서 재접속한 것
-                    print(f"{client_id} reconnected from another sid")
-
-                else:
-                    # 없으면 클라이언트가 퇴장한 것
-                    # 방에 남은 클라이언트에게 퇴장 정보 전송
-                    for client in await get_room_clients(room_id, redis_client):
-                        client_sid = await get_sid_by_client_id(client, redis_client)
-                        if client_sid:
-                            await sio_server.emit(
-                                "SC_LEAVE_USER",
-                                {"client_id": client_id},
-                                to=client_sid,
-                            )
-
-                    # 방에서 클라이언트 제거
-                    await remove_from_room(room_id, client_id, redis_client)
-
-                    print(f"{client_id} disconnected from room {room_id}")
+            # 방에 있는 모든 클라이언트에게 퇴장 정보 전송
+            for client in await get_room_clients(room_id, redis_client):
+                client_sid = await get_sid_by_client_id(client, redis_client)
+                if client_sid:
+                    await sio_server.emit(
+                        "SC_LEAVE_USER",
+                        {"client_id": client_id},
+                        to=client_sid,
+                    )
 
         except Exception as e:
             print(f"Disconnect handler error: {e}")
-
