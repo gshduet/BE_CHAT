@@ -133,9 +133,6 @@ async def CS_JOIN_ROOM(sid, data):
         new_client_info.update({"room_type": room_type, "room_id": room_id})
         await set_client_info(client_id, new_client_info, redis_client)
 
-        # 방에 클라이언트 추가
-        await add_to_room(room_id, client_id, redis_client)
-
         for client in await get_room_clients(room_id, redis_client):
             client_info = await get_client_info(client, redis_client)
             if not client_info:
@@ -168,9 +165,8 @@ async def CS_JOIN_ROOM(sid, data):
                 to=sid,
             )
 
-
-
-
+        # 방에 클라이언트 추가
+        await add_to_room(room_id, client_id, redis_client)
 
 
 # 같은 방에 있는 클라이언트들의 정보를 모두 전송(본인 정보 포함)
