@@ -190,12 +190,9 @@ async def enqueue_connection_request(
     redis_client: Redis,
     sid: str,
     client_id: str,
-    room_id: str,
-    user_name: str,
-    event: asyncio.Event,
 ):
     await redis_client.rpush(
-        "connection_requests", f"{sid}|{client_id}|{room_id}|{user_name}"
+        "connection_requests", f"{sid}|{client_id}"
     )
 
 
@@ -203,11 +200,9 @@ async def enqueue_connection_request(
 async def dequeue_connection_request(redis_client: Redis):
     request = await redis_client.lpop("connection_requests")
     if request:
-        sid, client_id, room_id, user_name = request.split("|")
+        sid, client_id= request.split("|")
         return {
             "sid": sid,
             "client_id": client_id,
-            "room_id": room_id,
-            "user_name": user_name,
         }
     return None

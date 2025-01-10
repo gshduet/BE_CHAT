@@ -99,7 +99,7 @@ async def connect(sid, environ):
 
         event = asyncio.Event()
 
-        await enqueue_connection_request(redis_client, sid, client_id, event)
+        await enqueue_connection_request(redis_client, sid, client_id)
         await set_sid_mapping(client_id, sid, redis_client)
 
         # 이벤트 객체를 전역 딕셔너리에 저장
@@ -144,7 +144,6 @@ async def CS_JOIN_ROOM(sid, data):
                 "SC_USER_POSITION_INFO",
                 {
                     "client_id": client_id,
-                    "user_name": new_client_info.get("user_name", "Unknown"),
                     "position_x": int(new_client_info.get("position_x")),
                     "position_y": int(new_client_info.get("position_y")),
                     "direction": int(new_client_info.get("direction")),
@@ -157,7 +156,6 @@ async def CS_JOIN_ROOM(sid, data):
                 "SC_USER_POSITION_INFO",
                 {
                     "client_id": client,
-                    "user_name": client_info.get("user_name", "Unknown"),
                     "position_x": int(client_info.get("position_x")),
                     "position_y": int(client_info.get("position_y")),
                     "direction": int(client_info.get("direction")),
@@ -267,7 +265,7 @@ async def CS_CHAT(sid, data):
             print(f"Error: Missing client_info for client_id {client_id}")
             return
 
-        user_name = client_info.get("user_name")
+        # user_name = client_info.get("user_name")
         room_id = client_info.get("room_id")
 
         message = data.get("message")
@@ -282,7 +280,7 @@ async def CS_CHAT(sid, data):
             await sio_server.emit(
                 "SC_CHAT",
                 {
-                    "user_name": user_name,
+                    # "user_name": user_name,
                     "message": message,
                 },
                 to=client_sid,
@@ -290,7 +288,7 @@ async def CS_CHAT(sid, data):
 
             print(f"sent to {client}")
 
-        print(f"{user_name} sent message : {message}")
+        # print(f"{user_name} sent message : {message}")
 
 
 @sio_server.event
