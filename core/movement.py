@@ -27,16 +27,16 @@ class SectorManager:
     # 인접 섹터에 있는 클라이언트 목록을 반환
     def get_nearby_clients(self, x: int, y: int) -> List[str]:
         sector_key = self.get_sector_key(x, y)
-        nearby = []
+        nearby = set()
         for offset_x in [-1, 0, 1]:
             for offset_y in [-1, 0, 1]:
                 nearby_sector = f"{x // self.sector_size + offset_x}:{y // self.sector_size + offset_y}"
-                nearby.extend(self.sectors.get(nearby_sector, []))
-        return nearby
+                nearby.update(self.sectors.get(nearby_sector, []))
+        return list(nearby)
 
 # SectorManager 인스턴스 생성
 # 임시 섹터 크기 100으로 설정
-sector_manager = SectorManager(sector_size=100)
+sector_manager = SectorManager(sector_size=300)
 
 # 클라이언트의 이동을 처리하는 함수
 # 클라이언트의 새 위치를 업데이트
@@ -95,12 +95,13 @@ async def handle_view_list_update(sid, data, redis_client, emit_callback):
     client_info = await get_client_info(client_id, redis_client)
     if not client_info:
         return
+    
+    client_info["view_list"] = new_view_list
 
     # 현재 시야 목록과 비교하여 추가 및 제거할 클라이언트 계산
     current_view_list = client_info.get("view_list", [])
 
     added_clients = set(new_view_list) - set(current_view_list)
-    removed_clients = set(current_view_list) - set(new_view_list)
 
     # 새롭게 보이는 클라이언트를 클라이언트에게 전송
     for client in added_clients:
@@ -112,10 +113,6 @@ async def handle_view_list_update(sid, data, redis_client, emit_callback):
             "position_y": int(client_data.get("position_y")),
             "direction": int(client_data.get("direction")),
         })
-
-    # 보이지 않게 된 클라이언트를 클라이언트에게 전송
-    for client in removed_clients:
-        await emit_callback(client, {"client_id": client, "action": "remove"})
 
     # 업데이트된 시야 목록을 Redis에 저장
     client_info["view_list"] = new_view_list
