@@ -92,9 +92,9 @@ async def connect(sid, environ):
     async for redis_client in get_redis():
         existing_sid = await get_sid_by_client_id(client_id, redis_client)
         if existing_sid and existing_sid != sid:
-            await sio_server.disconnect(sid)
-            await delete_sid_mapping(sid, redis_client)
-            print(f"Disconnected NEW SID {sid} for client {client_id}")
+            await delete_sid_mapping(existing_sid, redis_client)
+            await sio_server.disconnect(existing_sid)
+            print(f"Disconnected OLD SID {existing_sid} for client {client_id}")
             return
 
         event = asyncio.Event()
