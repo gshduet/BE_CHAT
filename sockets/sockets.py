@@ -177,52 +177,38 @@ async def CS_JOIN_ROOM(sid, data):
                 to=sid,
             )
 
+@sio_server.event
+async def CS_LEAVE_ROOM(sid, data):
+    client_id = data.get("client_id")
+    room_id = data.get("room_id")
 
+    if not client_id or not room_id:
+        print("Error: Missing required data")
+        return
 
+    async for redis_client in get_redis():
+        # 방에서 클라이언트 제거
+        await remove_from_room(room_id, client_id, redis_client)
 
-# 같은 방에 있는 클라이언트들의 정보를 모두 전송(본인 정보 포함)
-# @sio_server.event
-# async def CS_USER_POSITION_INFO(sid, data):
-#     async for redis_client in get_redis():
-#         new_client_id = await get_client_id_by_sid(sid, redis_client)
-#         if not new_client_id:
-#             print(f"Error: SID {sid} not mapped to any client ID.")
-#             return
+        # 클라이언트 정보 업데이트 room_type, room_id
+        client_info = await get_client_info(client_id, redis_client)
+        if not client_info:
+            print(f"Error: Missing client_info for client_id {client_id}")
+            return
 
-#         new_client_info = await get_client_info(new_client_id, redis_client)
-#         room_id = new_client_info.get("room_id")
+        client_info.update({"room_type": None, "room_id": None})
+        await set_client_info(client_id, client_info, redis_client)
 
-#         for client in await get_room_clients(room_id, redis_client):
-#             client_info = await get_client_info(client, redis_client)
-#             if not client_info:
-#                 continue
+        # 방에 있는 모든 클라이언트에게 퇴장 정보 전송(본인 포함)
+        for client in await get_room_clients(room_id, redis_client):
+            client_sid = await get_sid_by_client_id(client, redis_client)
+            await sio_server.emit(
+                "SC_LEAVE_ROOM",
+                {"client_id": client_id},
+                to=client_sid,
+            )
 
-#             # 기존 클라이언트에게 새로운 클라이언트 정보 전송
-#             client_sid = await get_sid_by_client_id(client, redis_client)
-#             await sio_server.emit(
-#                 "SC_USER_POSITION_INFO",
-#                 {
-#                     "client_id": new_client_id,
-#                     "user_name": new_client_info.get("user_name", "Unknown"),
-#                     "position_x": int(new_client_info.get("position_x")),
-#                     "position_y": int(new_client_info.get("position_y")),
-#                     "direction": int(new_client_info.get("direction")),
-#                 },
-#                 to=client_sid,
-#             )
-
-#             # 새로운 클라이언트에게 기존 클라이언트 정보 전송
-#             await sio_server.emit(
-#                 "SC_USER_POSITION_INFO",
-#                 {
-#                     "client_id": client,
-#                     "user_name": client_info.get("user_name", "Unknown"),
-#                     "position_x": int(client_info.get("position_x")),
-#                     "position_y": int(client_info.get("position_y")),
-#                     "direction": int(client_info.get("direction")),
-#                 },
-#                 to=sid,
-#             )
+        print(f"{client_info.get('user_name')} left room {room_id}")
 
 # 창을 닫은 유저에 대한 처리
 @sio_server.event
