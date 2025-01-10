@@ -98,6 +98,11 @@ async def connect(sid, environ):
     async for redis_client in get_redis():
         existing_sid = await get_sid_by_client_id(client_id, redis_client)
         if existing_sid and existing_sid != sid:
+            await sio_server.emit(
+                "SC_DUPLICATE_CONNECTION",
+                { },
+                to=sid,
+            )
             await delete_sid_mapping(sid, redis_client)
             await sio_server.disconnect(sid)
             print(f"Disconnected OLD SID {sid} for client {client_id}")
