@@ -19,6 +19,9 @@ from core.redis import (
     delete_disconnected_client,
     enqueue_connection_request,
     dequeue_connection_request,
+    add_duplicate_connection,
+    remove_duplicate_connection,
+    get_duplicate_connections,
 )
 
 from core.movement import update_movement, handle_view_list_update
@@ -98,14 +101,8 @@ async def connect(sid, environ):
     async for redis_client in get_redis():
         existing_sid = await get_sid_by_client_id(client_id, redis_client)
         if existing_sid and existing_sid != sid:
-            await sio_server.emit(
-                "SC_DUPLICATE_CONNECTION",
-                { "message": "Duplicate connection detected." },
-                to=sid,
-            )
-            await delete_sid_mapping(sid, redis_client)
-            await sio_server.disconnect(sid)
-            print(f"Disconnected NEW SID {sid} for client {client_id}")
+            # 중복 연결 아이디인 것을 redis에 저장
+            await add_duplicate_connection(sid, redis_client)
             return
 
         event = asyncio.Event()
@@ -137,6 +134,21 @@ async def CS_JOIN_ROOM(sid, data):
         return
 
     async for redis_client in get_redis():
+
+        # 중복 연결 아이디인지 확인인
+        duplicate_sid = await get_duplicate_connections(sid, redis_client)
+
+        if duplicate_sid:
+            await sio_server.emit(
+                "SC_DUPLICATE_CONNECTION",
+                { "message": "Duplicate connection detected." },
+                to=sid,
+            )
+            await delete_sid_mapping(sid, redis_client)
+            await sio_server.disconnect(sid)
+            print(f"Disconnected NEW SID {sid} for client {client_id}")
+
+
         await set_client_info(client_id, {"room_type": room_type, "room_id": room_id}, redis_client)
         await add_to_room(room_id, client_id, redis_client)
 

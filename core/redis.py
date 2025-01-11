@@ -209,3 +209,19 @@ async def dequeue_connection_request(redis_client: Redis):
             "user_name": user_name,
         }
     return None
+
+
+# 중복 연결 아이디 저장 함수
+@with_redis_retry
+async def add_duplicate_connection(sid: str, redis_client: Redis):
+    await redis_client.sadd("duplicate_connections", sid)
+
+# 중복 연결 아이디 삭제 함수
+@with_redis_retry
+async def remove_duplicate_connection(sid: str, redis_client: Redis):
+    await redis_client.srem("duplicate_connections", sid)
+
+# 중복 연결 아이디 조회 함수
+@with_redis_retry
+async def get_duplicate_connections(sid: str, redis_client: Redis):
+    return await redis_client.sismember("duplicate_connections", sid)
