@@ -100,12 +100,12 @@ async def connect(sid, environ):
         if existing_sid and existing_sid != sid:
             await sio_server.emit(
                 "SC_DUPLICATE_CONNECTION",
-                { },
+                { "message": "Duplicate connection detected." },
                 to=sid,
             )
             await delete_sid_mapping(sid, redis_client)
             await sio_server.disconnect(sid)
-            print(f"Disconnected OLD SID {sid} for client {client_id}")
+            print(f"Disconnected NEW SID {sid} for client {client_id}")
             return
 
         event = asyncio.Event()
