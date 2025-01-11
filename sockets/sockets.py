@@ -221,6 +221,36 @@ async def CS_LEAVE_ROOM(sid, data):
 @sio_server.event
 async def CS_USER_DESTRUCTION(sid, data):
     async for redis_client in get_redis():
+        # sid로 client_id 찾기
+        client_id = await get_client_id_by_sid(sid, redis_client)
+        if not client_id:
+            print("Error: Invalid or missing client_id")
+            return
+
+        client_info = await get_client_info(client_id, redis_client)
+        if not client_info:
+            print(f"Error: Missing client_info for client_id {client_id}")
+            return
+
+        room_id = client_info.get("room_id")
+
+        # 같은 방의 클라이언트에게 
+        for client in await get_room_clients(room_id, redis_client):
+            client_info = await get_client_info(client, redis_client)
+            client_sid = await get_sid_by_client_id(client, redis_client)
+            if not client_info:
+                continue
+
+            # 새로운 클라이언트에게 기존 클라이언트 정보 전송
+            await sio_server.emit(
+                "SC_LEAVE_USER",
+                {
+                    "client_id": client_id,
+                },
+                to=client_sid,
+            )
+
+
         delete_client_info(data.get("client_id"), redis_client)
         delete_sid_mapping(sid, redis_client)
         delete_disconnected_client(data.get("client_id"), redis_client)
