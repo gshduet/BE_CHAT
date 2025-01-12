@@ -75,7 +75,6 @@ async def process_connection_requests():
                     print(f"Processed connection: sid:{sid}, client_id:{client_id}")
                 
                 await set_client_info(client_id, client_data, redis_client)
-                # await add_to_room(room_id, client_id, redis_client)
 
                 # 이벤트 객체 완료 알림
                 event = asyncio_event_store.pop(sid, None)
@@ -83,7 +82,7 @@ async def process_connection_requests():
                     event.set()
                     print(f"Event for SID {sid} set.")
 
-            await asyncio.sleep(0.1)  # cpu 과부하 방지..
+            await asyncio.sleep(0.1)
 
 
 # 클라이언트 연결 이벤트 처리
@@ -101,15 +100,9 @@ async def connect(sid, environ):
     async for redis_client in get_redis():
         existing_sid = await get_sid_by_client_id(client_id, redis_client)
         if existing_sid and existing_sid != sid:
-            # 중복 연결 아이디이면 이전 연결을 끊고 새로운 연결을 처리
-            await sio_server.emit(
-                "SC_DUPLICATE_CONNECTION",
-                { "message": "Duplicate connection detected." },
-                to=existing_sid,
-            )
-            await delete_sid_mapping(existing_sid, redis_client)
-            await sio_server.disconnect(existing_sid)
-            print(f"Disconnected OLD SID {existing_sid} for client {client_id}")
+            # 중복 연결 아이디인 것을 redis에 저장
+            await add_duplicate_connection(sid, redis_client)
+            return
 
         event = asyncio.Event()
 
@@ -140,6 +133,19 @@ async def CS_JOIN_ROOM(sid, data):
         return
 
     async for redis_client in get_redis():
+        # 중복 연결 아이디인지 확인인
+        duplicate_sid = await get_duplicate_connections(sid, redis_client)
+
+        if duplicate_sid:
+            await sio_server.emit(
+                "SC_DUPLICATE_CONNECTION",
+                { "message": "Duplicate connection detected." },
+                to=sid,
+            )
+            await delete_sid_mapping(sid, redis_client)
+            await sio_server.disconnect(sid)
+            print(f"Disconnected NEW SID {sid} for client {client_id}")
+
         await set_client_info(client_id, {"room_type": room_type, "room_id": room_id}, redis_client)
         await add_to_room(room_id, client_id, redis_client)
 
