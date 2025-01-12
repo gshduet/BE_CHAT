@@ -101,9 +101,15 @@ async def connect(sid, environ):
     async for redis_client in get_redis():
         existing_sid = await get_sid_by_client_id(client_id, redis_client)
         if existing_sid and existing_sid != sid:
-            # 중복 연결 아이디인 것을 redis에 저장
-            await add_duplicate_connection(sid, redis_client)
-            return
+            # 중복 연결 아이디이면 이전 연결을 끊고 새로운 연결을 처리
+            await sio_server.emit(
+                "SC_DUPLICATE_CONNECTION",
+                { "message": "Duplicate connection detected." },
+                to=existing_sid,
+            )
+            await delete_sid_mapping(existing_sid, redis_client)
+            await sio_server.disconnect(existing_sid)
+            print(f"Disconnected OLD SID {existing_sid} for client {client_id}")
 
         event = asyncio.Event()
 
@@ -134,21 +140,6 @@ async def CS_JOIN_ROOM(sid, data):
         return
 
     async for redis_client in get_redis():
-
-        # 중복 연결 아이디인지 확인인
-        duplicate_sid = await get_duplicate_connections(sid, redis_client)
-
-        if duplicate_sid:
-            await sio_server.emit(
-                "SC_DUPLICATE_CONNECTION",
-                { "message": "Duplicate connection detected." },
-                to=sid,
-            )
-            await delete_sid_mapping(sid, redis_client)
-            await sio_server.disconnect(sid)
-            print(f"Disconnected NEW SID {sid} for client {client_id}")
-
-
         await set_client_info(client_id, {"room_type": room_type, "room_id": room_id}, redis_client)
         await add_to_room(room_id, client_id, redis_client)
 
@@ -176,9 +167,9 @@ async def CS_JOIN_ROOM(sid, data):
                 {
                     "client_id": client_id,
                     "user_name": new_client_info.get("user_name", "Unknown"),
-                    "position_x": int(new_client_info.get("position_x")),
-                    "position_y": int(new_client_info.get("position_y")),
-                    "direction": int(new_client_info.get("direction")),
+                    "position_x": int(float(new_client_info.get("position_x"))),
+                    "position_y": int(float(new_client_info.get("position_y"))),
+                    "direction": int(float(new_client_info.get("direction"))),
                 },
                 to=client_sid,
             )
@@ -189,9 +180,9 @@ async def CS_JOIN_ROOM(sid, data):
                 {
                     "client_id": client,
                     "user_name": client_info.get("user_name", "Unknown"),
-                    "position_x": int(client_info.get("position_x")),
-                    "position_y": int(client_info.get("position_y")),
-                    "direction": int(client_info.get("direction")),
+                    "position_x": int(float(client_info.get("position_x"))),
+                    "position_y": int(float(client_info.get("position_y"))),
+                    "direction": int(float(client_info.get("direction"))),
                 },
                 to=sid,
             )
