@@ -78,7 +78,7 @@ async def update_movement(sid, data, redis_client, emit_callback):
             "direction": int(direction),
         })
 
-    print(f"Client {client_info.get('user_name')} move to ({x}, {y})")
+    # print(f"Client {client_info.get('user_name')} move to ({x}, {y})")
 
 # 클라이언트의 시야 목록을 업데이트하는 함수
 # 새롭게 보이는 클라이언트를 추가하고 보이지 않게 된 클라이언트를 제거
