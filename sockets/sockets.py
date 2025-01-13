@@ -102,23 +102,23 @@ async def connect(sid, environ):
         if existing_sid and existing_sid != sid:
             # 중복 연결 아이디인 것을 redis에 저장
             await add_duplicate_connection(sid, redis_client)
-            return
+        
+        else: # 중복 연결 아이디가 아닌 경우
+            event = asyncio.Event()
 
-        event = asyncio.Event()
+            await enqueue_connection_request(redis_client, sid, client_id, user_name)
+            await set_sid_mapping(client_id, sid, redis_client)
 
-        await enqueue_connection_request(redis_client, sid, client_id, user_name)
-        await set_sid_mapping(client_id, sid, redis_client)
+            # 이벤트 객체를 전역 딕셔너리에 저장
+            asyncio_event_store[sid] = event
+            print(f"enqueued: sid:{sid}, client_id:{client_id}")
 
-        # 이벤트 객체를 전역 딕셔너리에 저장
-        asyncio_event_store[sid] = event
-        print(f"enqueued: sid:{sid}, client_id:{client_id}")
+            # 연결 요청 완료 대기
+            while asyncio_event_store.get(sid):
+                await event.wait()
+                print(f"Event for SID {sid} completed.")
 
-    # 연결 요청 완료 대기
-    while asyncio_event_store.get(sid):
-        await event.wait()
-        print(f"Event for SID {sid} completed.")
-
-    print(f"Connection completed: sid:{sid}, client_id:{client_id}")
+            print(f"Connection completed: sid:{sid}, client_id:{client_id}")
 
 @sio_server.event
 async def CS_JOIN_ROOM(sid, data):
@@ -142,55 +142,61 @@ async def CS_JOIN_ROOM(sid, data):
                 { "message": "Duplicate connection detected." },
                 to=sid,
             )
-            await delete_sid_mapping(sid, redis_client)
             await remove_duplicate_connection(sid, redis_client)
             await sio_server.disconnect(sid)
             print(f"Disconnected NEW SID {sid} for client {client_id}")
 
         else:
-            new_client_info = await get_client_info(client_id, redis_client)
-            if not new_client_info:
-                print(f"Error: Missing client_info for client_id {client_id}")
-                return
-
             # 클라이언트 정보 업데이트 room_type, room_id
-            new_client_info.update({"room_type": room_type, "room_id": room_id})
-            await set_client_info(client_id, new_client_info, redis_client)
+            await set_client_info(client_id, {"room_type": room_type, "room_id": room_id}, redis_client)
 
             # 방에 클라이언트 추가
             await add_to_room(room_id, client_id, redis_client)
 
-            for client in await get_room_clients(room_id, redis_client):
-                client_info = await get_client_info(client, redis_client)
-                if not client_info:
-                    continue
 
-                # 기존 클라이언트에게 새로운 클라이언트 정보 전송
-                client_sid = await get_sid_by_client_id(client, redis_client)
-                await sio_server.emit(
-                    "SC_USER_POSITION_INFO",
-                    {
-                        "client_id": client_id,
-                        "user_name": new_client_info.get("user_name", "Unknown"),
-                        "position_x": int(float(new_client_info.get("position_x"))),
-                        "position_y": int(float(new_client_info.get("position_y"))),
-                        "direction": int(float(new_client_info.get("direction"))),
-                    },
-                    to=client_sid,
-                )
+@sio_server.event
+async def CS_USER_POSITION(sid, data):
+    client_id = data.get("client_id")
+    room_id = data.get("room_id")
 
-                # 새로운 클라이언트에게 기존 클라이언트 정보 전송
-                await sio_server.emit(
-                    "SC_USER_POSITION_INFO",
-                    {
-                        "client_id": client,
-                        "user_name": client_info.get("user_name", "Unknown"),
-                        "position_x": int(float(client_info.get("position_x"))),
-                        "position_y": int(float(client_info.get("position_y"))),
-                        "direction": int(float(client_info.get("direction"))),
-                    },
-                    to=sid,
-                )
+    new_client_info = await get_client_info(client_id, redis_client)
+    if not new_client_info:
+        print(f"Error: Missing client_info for client_id {client_id}")
+        return
+
+    async for redis_client in get_redis():
+        for client in await get_room_clients(room_id, redis_client):
+            client_info = await get_client_info(client, redis_client)
+            if not client_info:
+                continue
+
+            # 기존 클라이언트에게 새로운 클라이언트 정보 전송
+            client_sid = await get_sid_by_client_id(client, redis_client)
+            await sio_server.emit(
+                "SC_USER_POSITION_INFO",
+                {
+                    "client_id": client_id,
+                    "user_name": new_client_info.get("user_name", "Unknown"),
+                    "position_x": int(float(new_client_info.get("position_x"))),
+                    "position_y": int(float(new_client_info.get("position_y"))),
+                    "direction": int(float(new_client_info.get("direction"))),
+                },
+                to=client_sid,
+            )
+
+            # 새로운 클라이언트에게 기존 클라이언트 정보 전송
+            await sio_server.emit(
+                "SC_USER_POSITION_INFO",
+                {
+                    "client_id": client,
+                    "user_name": client_info.get("user_name", "Unknown"),
+                    "position_x": int(float(client_info.get("position_x"))),
+                    "position_y": int(float(client_info.get("position_y"))),
+                    "direction": int(float(client_info.get("direction"))),
+                },
+                to=sid,
+            )
+
 
 @sio_server.event
 async def CS_LEAVE_ROOM(sid, data):
@@ -205,15 +211,6 @@ async def CS_LEAVE_ROOM(sid, data):
         # 방에서 클라이언트 제거
         await remove_from_room(room_id, client_id, redis_client)
 
-        # 클라이언트 정보 업데이트 room_type, room_id
-        client_info = await get_client_info(client_id, redis_client)
-        if not client_info:
-            print(f"Error: Missing client_info for client_id {client_id}")
-            return
-
-        client_info.update({"room_type": None, "room_id": None})
-        await set_client_info(client_id, client_info, redis_client)
-
         # 방에 있는 모든 클라이언트에게 퇴장 정보 전송(본인 포함)
         for client in await get_room_clients(room_id, redis_client):
             client_sid = await get_sid_by_client_id(client, redis_client)
@@ -223,7 +220,7 @@ async def CS_LEAVE_ROOM(sid, data):
                 to=client_sid,
             )
 
-        print(f"{client_info.get('user_name')} left room {room_id}")
+        print(f"{client_id} left room {room_id}")
 
 # 창을 닫은 유저에 대한 처리
 @sio_server.event
@@ -258,9 +255,8 @@ async def CS_USER_DESTRUCTION(sid, data):
                 to=client_sid,
             )
 
-        delete_client_info(data.get("client_id"), redis_client)
-        delete_sid_mapping(sid, redis_client)
-        delete_disconnected_client(data.get("client_id"), redis_client)
+        await delete_sid_mapping(sid, redis_client)
+        await delete_client_info(data.get("client_id"), redis_client)
 
         print(f"{client_info.get('user_name')} left service {room_id}")
 
