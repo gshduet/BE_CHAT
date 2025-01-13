@@ -133,7 +133,7 @@ async def CS_JOIN_ROOM(sid, data):
         return
 
     async for redis_client in get_redis():
-        # 중복 연결 아이디인지 확인인
+        # 중복 연결 아이디인지 확인
         duplicate_sid = await get_duplicate_connections(sid, redis_client)
 
         if duplicate_sid:
@@ -143,11 +143,9 @@ async def CS_JOIN_ROOM(sid, data):
                 to=sid,
             )
             await delete_sid_mapping(sid, redis_client)
+            await remove_duplicate_connection(sid, redis_client)
             await sio_server.disconnect(sid)
             print(f"Disconnected NEW SID {sid} for client {client_id}")
-
-        await set_client_info(client_id, {"room_type": room_type, "room_id": room_id}, redis_client)
-        await add_to_room(room_id, client_id, redis_client)
 
         new_client_info = await get_client_info(client_id, redis_client)
         if not new_client_info:
@@ -229,13 +227,13 @@ async def CS_LEAVE_ROOM(sid, data):
 # 창을 닫은 유저에 대한 처리
 @sio_server.event
 async def CS_USER_DESTRUCTION(sid, data):
-    async for redis_client in get_redis():
-        # sid로 client_id 찾기
-        client_id = await get_client_id_by_sid(sid, redis_client)
-        if not client_id:
-            print("Error: Invalid or missing client_id")
-            return
+    client_id = data.get("client_id")
 
+    if not client_id:
+        print("Error: Missing required data")
+        return
+
+    async for redis_client in get_redis():
         client_info = await get_client_info(client_id, redis_client)
         if not client_info:
             print(f"Error: Missing client_info for client_id {client_id}")
@@ -259,20 +257,19 @@ async def CS_USER_DESTRUCTION(sid, data):
                 to=client_sid,
             )
 
-
         delete_client_info(data.get("client_id"), redis_client)
         delete_sid_mapping(sid, redis_client)
         delete_disconnected_client(data.get("client_id"), redis_client)
 
 @sio_server.event
 async def CS_LEAVE_USER(sid, data):
+    client_id = data.get("client_id")
+
+    if not client_id:
+        print("Error: Missing required data")
+        return
+
     async for redis_client in get_redis():
-        # sid로 client_id 찾기
-        client_id = await get_client_id_by_sid(sid, redis_client)
-
-        if not client_id:
-            return
-
         client_info = await get_client_info(client_id, redis_client)
         room_id = client_info.get("room_id")
 
@@ -293,17 +290,13 @@ async def CS_LEAVE_USER(sid, data):
 
 @sio_server.event
 async def CS_CHAT(sid, data):
-    if not isinstance(data, dict):
-        print(f"Error: Invalid data format")
+    client_id = data.get("client_id")
+
+    if not client_id:
+        print("Error: Missing required data")
         return
 
     async for redis_client in get_redis():
-        # sid로 client_id 찾기
-        client_id = await get_client_id_by_sid(sid, redis_client)
-        if not client_id:
-            print("Error: Invalid or missing client_id")
-            return
-
         # 클라이언트 정보 가져오기
         client_info = await get_client_info(client_id, redis_client)
         if not client_info:
@@ -341,14 +334,14 @@ async def CS_PICTURE_INFO(sid, data):
     if not isinstance(data, dict):
         print("Error: Invalid data format")
         return
+    
+    client_id = data.get("client_id")
+
+    if not client_id:
+        print("Error: Missing required data")
+        return
 
     async for redis_client in get_redis():
-        # sid로 client_id 찾기
-        client_id = await get_client_id_by_sid(sid, redis_client)
-        if not client_id:
-            print("Error: Invalid or missing client_id")
-            return
-
         # 클라이언트 정보 가져오기
         client_info = await get_client_info(client_id, redis_client)
         if not client_info:
@@ -384,13 +377,14 @@ async def CS_MOVEMENT_INFO(sid, data):
     if not isinstance(data, dict):
         print("Error: Invalid data format")
         return
+    
+    client_id = data.get("client_id")
+
+    if not client_id:
+        print("Error: Missing required data")
+        return
 
     async for redis_client in get_redis():
-        client_id = await get_client_id_by_sid(sid, redis_client)
-        if not client_id:
-            print("Error: Invalid or missing client_id")
-            return
-
         client_info = await get_client_info(client_id, redis_client)
         if not client_info:
             print(f"Error: Missing client_info for client_id {client_id}")
@@ -450,10 +444,11 @@ async def disconnect(sid):
 
              # 클라이언트 정보 삭제
             await delete_sid_mapping(sid, redis_client)
+            await delete_client_info(client_id, redis_client)
+            await remove_from_room(room_id, client_id, redis_client)
 
             # 재접속 대기 클라이언트로 이동
             await set_disconnected_client(client_id, client_data, redis_client)
-            await remove_from_room(room_id, client_id, redis_client)
 
             # 방에 있는 모든 클라이언트에게 퇴장 정보 전송
             for client in await get_room_clients(room_id, redis_client):
