@@ -34,8 +34,6 @@ sio_server = socketio.AsyncServer(
     ping_interval=25,  # Ping 메시지 전송 간격
 )
 
-DISCONNECT_TIMEOUT = 10
-
 sio_app = socketio.ASGIApp(socketio_server=sio_server, socketio_path="/sio/sockets")
 
 # 이벤트 객체를 저장할 전역 딕셔너리
@@ -159,12 +157,18 @@ async def CS_USER_POSITION(sid, data):
     client_id = data.get("client_id")
     room_id = data.get("room_id")
 
-    new_client_info = await get_client_info(client_id, redis_client)
-    if not new_client_info:
-        print(f"Error: Missing client_info for client_id {client_id}")
+    if not client_id or not room_id:
+        print("Error: Missing required data")
         return
 
+    print(f"CS_USER_POSITION: client_id {client_id}, {room_id}")
+
     async for redis_client in get_redis():
+        new_client_info = await get_client_info(client_id, redis_client)
+        if not new_client_info:
+            print(f"Error: Missing client_info for client_id {client_id}")
+            return
+
         for client in await get_room_clients(room_id, redis_client):
             client_info = await get_client_info(client, redis_client)
             if not client_info:
@@ -257,35 +261,14 @@ async def CS_USER_DESTRUCTION(sid, data):
 
         await delete_sid_mapping(sid, redis_client)
         await delete_client_info(data.get("client_id"), redis_client)
+        
+        # 재접속 대기 클라이언트로 이동
+        await set_disconnected_client(client_id, client_info, redis_client)
+        print(f"set_disconnected_client {client_id}")
+
+        
 
         print(f"{client_info.get('user_name')} left service {room_id}")
-
-@sio_server.event
-async def CS_LEAVE_USER(sid, data):
-    client_id = data.get("client_id")
-
-    if not client_id:
-        print("Error: Missing required data")
-        return
-
-    async for redis_client in get_redis():
-        client_info = await get_client_info(client_id, redis_client)
-        room_id = client_info.get("room_id")
-
-        # 방에 있는 모든 클라이언트에게 퇴장 정보 전송(본인 포함)
-        for client in await get_room_clients(room_id, redis_client):
-            client_sid = await get_sid_by_client_id(client, redis_client)
-            await sio_server.emit(
-                "SC_LEAVE_USER",
-                {"client_id": client_id},
-                to=client_sid,
-            )
-
-        # 해당 룸에서 클라이언트 제거
-        await remove_from_room(room_id, client_id, redis_client)
-
-        print(f"{client_info.get('user_name')} left room {room_id}")
-
 
 @sio_server.event
 async def CS_CHAT(sid, data):
@@ -445,9 +428,6 @@ async def disconnect(sid):
             await delete_sid_mapping(sid, redis_client)
             await delete_client_info(client_id, redis_client)
             await remove_from_room(room_id, client_id, redis_client)
-
-            # 재접속 대기 클라이언트로 이동
-            await set_disconnected_client(client_id, client_data, redis_client)
 
             # 방에 있는 모든 클라이언트에게 퇴장 정보 전송
             for client in await get_room_clients(room_id, redis_client):
