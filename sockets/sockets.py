@@ -124,10 +124,8 @@ async def CS_JOIN_ROOM(sid, data):
     room_type = data.get("room_type")
     room_id = data.get("room_id")
 
-    print(f"CS_JOIN_ROOM: client_id {client_id}, {room_id}")
-
     if not client_id or not room_type or not room_id:
-        print("Error: Missing required data")
+        print("Error: Missing required data0")
         return
 
     async for redis_client in get_redis():
@@ -158,17 +156,15 @@ async def CS_USER_POSITION(sid, data):
     room_id = data.get("room_id")
 
     if not client_id or not room_id:
-        print("Error: Missing required data")
+        print("Error: Missing required data1")
         return
-
-    print(f"CS_USER_POSITION: client_id {client_id}, {room_id}")
 
     async for redis_client in get_redis():
         new_client_info = await get_client_info(client_id, redis_client)
         if not new_client_info:
             print(f"Error: Missing client_info for client_id {client_id}")
             return
-
+        
         for client in await get_room_clients(room_id, redis_client):
             client_info = await get_client_info(client, redis_client)
             if not client_info:
@@ -208,7 +204,7 @@ async def CS_LEAVE_ROOM(sid, data):
     room_id = data.get("room_id")
 
     if not client_id or not room_id:
-        print("Error: Missing required data")
+        print("Error: Missing required data2")
         return
 
     async for redis_client in get_redis():
@@ -232,7 +228,7 @@ async def CS_USER_DESTRUCTION(sid, data):
     client_id = data.get("client_id")
 
     if not client_id:
-        print("Error: Missing required data")
+        print("Error: Missing required data3")
         return
 
     async for redis_client in get_redis():
@@ -275,7 +271,7 @@ async def CS_CHAT(sid, data):
     client_id = data.get("client_id")
 
     if not client_id:
-        print("Error: Missing required data")
+        print("Error: Missing required data4")
         return
 
     async for redis_client in get_redis():
@@ -320,7 +316,7 @@ async def CS_PICTURE_INFO(sid, data):
     client_id = data.get("client_id")
 
     if not client_id:
-        print("Error: Missing required data")
+        print("Error: Missing required data5")
         return
 
     async for redis_client in get_redis():
@@ -363,7 +359,7 @@ async def CS_MOVEMENT_INFO(sid, data):
     client_id = data.get("client_id")
 
     if not client_id:
-        print("Error: Missing required data")
+        print("Error: Missing required data6")
         return
 
     async for redis_client in get_redis():
