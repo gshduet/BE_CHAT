@@ -76,6 +76,7 @@ async def update_movement(sid, data, redis_client, emit_callback):
             "position_x": int(x),
             "position_y": int(y),
             "direction": int(direction),
+            "user_name": client_info.get("user_name"),
         })
 
     # print(f"Client {client_info.get('user_name')} move to ({x}, {y})")
