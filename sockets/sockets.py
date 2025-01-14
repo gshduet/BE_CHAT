@@ -165,27 +165,40 @@ async def CS_USER_POSITION(sid, data):
         if not new_client_info:
             print(f"Error: Missing client_info for client_id {client_id}")
             return
-        
+
+        await sio_server.emit(
+            "SC_USER_POSITION_INFO",
+            {
+                "client_id": client_id,
+                "user_name": new_client_info.get("user_name", "Unknown"),
+                "position_x": int(float(new_client_info.get("position_x"))),
+                "position_y": int(float(new_client_info.get("position_y"))),
+                "direction": int(float(new_client_info.get("direction"))),
+            },
+            to=sid,
+        )
+    
         for client in await get_room_clients(room_id, redis_client):
             client_info = await get_client_info(client, redis_client)
             if not client_info:
-                continue
-
-            # 기존 클라이언트에게 새로운 클라이언트 정보 전송
-            client_sid = await get_sid_by_client_id(client, redis_client)
-            await sio_server.emit(
-                "SC_USER_POSITION_INFO",
-                {
-                    "client_id": client_id,
-                    "user_name": new_client_info.get("user_name", "Unknown"),
-                    "position_x": int(float(new_client_info.get("position_x"))),
-                    "position_y": int(float(new_client_info.get("position_y"))),
-                    "direction": int(float(new_client_info.get("direction"))),
-                },
-                to=client_sid,
-            )
+             continue
 
             if client_id != client:
+                # 기존 클라이언트에게 새로운 클라이언트 정보 전송
+                client_sid = await get_sid_by_client_id(client, redis_client)
+                await sio_server.emit(
+                    "SC_USER_POSITION_INFO",
+                    {
+                        "client_id": client_id,
+                        "user_name": new_client_info.get("user_name", "Unknown"),
+                        "position_x": int(float(new_client_info.get("position_x"))),
+                        "position_y": int(float(new_client_info.get("position_y"))),
+                        "direction": int(float(new_client_info.get("direction"))),
+                    },
+                    to=client_sid,
+                )
+
+           
             # 새로운 클라이언트에게 기존 클라이언트 정보 전송
                 await sio_server.emit(
                     "SC_USER_POSITION_INFO",
