@@ -275,7 +275,7 @@ async def CS_USER_DESTRUCTION(sid, data):
         
         # 재접속 대기 클라이언트로 이동
         await set_disconnected_client(client_id, old_client_info, redis_client)
-        print(f"{client_info.get('user_name')} left service {room_id}")
+        print(f"{old_client_info.get('user_name')} left service {room_id}")
 
 @sio_server.event
 async def CS_CHAT(sid, data):
