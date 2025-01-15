@@ -66,8 +66,8 @@ async def process_connection_requests():
                 else:
                     client_data = {
                         "user_name": user_name,
-                        "position_x": 500,
-                        "position_y": 500,
+                        "position_x": 350,
+                        "position_y": 170,
                         "direction": 1,
                     }
                     print(f"New connection: sid:{sid}, client_id:{client_id}")
