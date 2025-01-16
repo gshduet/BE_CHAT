@@ -42,15 +42,16 @@ sector_manager = SectorManager(sector_size=300)
 # 클라이언트의 새 위치를 업데이트
 # 섹터 정보를 기반으로 인접 클라이언트에게 이동 정보를 전송
 async def update_movement(sid, data, redis_client, emit_callback):
-    client_id = await get_client_id_by_sid(sid, redis_client)
+    client_id = data.get("client_id")
     if not client_id:
-        print("Invalid SID")
-        return
+        print("Client ID missing")
 
-    client_info = await get_client_info(client_id, redis_client)
-    if not client_info:
-        print("Client info missing")
-        return
+    user_name = data.get("user_name")
+
+    # client_info = await get_client_info(client_id, redis_client)
+    # if not client_info:
+    #     print("Client info missing")
+    #     return
 
     # 클라이언트의 새 위치와 방향 정보 가져오기
     x, y, direction = int(data.get("position_x")), int(data.get("position_y")), data.get("direction")
@@ -59,8 +60,8 @@ async def update_movement(sid, data, redis_client, emit_callback):
         return
 
     # 클라이언트 정보를 업데이트하고 Redis에 저장
-    client_info.update({"position_x": x, "position_y": y, "direction": direction})
-    await set_client_info(client_id, client_info, redis_client)
+    # client_info.update({"position_x": x, "position_y": y, "direction": direction})
+    # await set_client_info(client_id, client_info, redis_client)
 
     # 섹터 정보를 업데이트하고 인접 클라이언트를 가져오기
     sector_manager.update_client_sector(client_id, x, y)
@@ -76,7 +77,7 @@ async def update_movement(sid, data, redis_client, emit_callback):
             "position_x": int(x),
             "position_y": int(y),
             "direction": int(direction),
-            "user_name": client_info.get("user_name"),
+            "user_name": user_name,
         })
 
     # print(f"Client {client_info.get('user_name')} move to ({x}, {y})")

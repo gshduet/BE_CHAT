@@ -167,9 +167,9 @@ async def CS_USER_POSITION(sid, data):
         )
     
         for client in await get_room_clients(room_id, redis_client):
-            client_info = await get_client_info(client, redis_client)
-            if not client_info:
-             continue
+            # client_info = await get_client_info(client, redis_client)
+            # if not client_info:
+            #  continue
 
             if client_id != client:
                 # 기존 클라이언트에게 새로운 클라이언트 정보 전송
@@ -186,31 +186,44 @@ async def CS_USER_POSITION(sid, data):
                     to=client_sid,
                 )
 
-           
-            # 새로운 클라이언트에게 기존 클라이언트 정보 전송
                 await sio_server.emit(
-                    "SC_USER_POSITION_INFO",
-                    {
-                        "client_id": client,
-                        "user_name": client_info.get("user_name", "Unknown"),
-                        "position_x": int(float(client_info.get("position_x"))),
-                        "position_y": int(float(client_info.get("position_y"))),
-                        "direction": int(float(client_info.get("direction"))),
-                    },
-                    to=sid,
+                    "SC_GET_POSITION",
+                    { },  
+                    to=client_sid,
                 )
+
+           
+            # # 새로운 클라이언트에게 기존 클라이언트 정보 전송
+            #     await sio_server.emit(
+            #         "SC_USER_POSITION_INFO",
+            #         {
+            #             "client_id": client,
+            #             "user_name": client_info.get("user_name", "Unknown"),
+            #             "position_x": int(float(client_info.get("position_x"))),
+            #             "position_y": int(float(client_info.get("position_y"))),
+            #             "direction": int(float(client_info.get("direction"))),
+            #         },
+            #         to=sid,
+            #     )
 
 
 @sio_server.event
 async def CS_LEAVE_ROOM(sid, data):
     client_id = data.get("client_id")
     room_id = data.get("room_id")
+    position_x = data.get("position_x")
 
     if not client_id or not room_id:
         print("Error: Missing required data2")
         return
 
     async for redis_client in get_redis():
+        position_y = data.get("position_y")
+        if position_x and position_y:
+            # 클라이언트 정보 업데이트
+            await set_client_info(client_id, {"position_x": position_x, "position_y": position_y}, redis_client)
+
+
         # 방에서 클라이언트 제거
         await remove_from_room(room_id, client_id, redis_client)
 
@@ -362,12 +375,6 @@ async def CS_MOVEMENT_INFO(sid, data):
         return
 
     async for redis_client in get_redis():
-        client_info = await get_client_info(client_id, redis_client)
-
-        if not client_info:
-            print(f"Error: Missing client_info for client_id {client_id}")
-            return
-
         await update_movement(sid, data, redis_client, emit_callback=emit_to_client)
         await handle_view_list_update(sid, data, redis_client, emit_callback=emit_to_client)
 
