@@ -19,9 +19,6 @@ from core.redis import (
     delete_disconnected_client,
     enqueue_connection_request,
     dequeue_connection_request,
-    add_duplicate_connection,
-    remove_duplicate_connection,
-    get_duplicate_connections,
 )
 
 from core.movement import update_movement, handle_view_list_update
@@ -99,25 +96,30 @@ async def connect(sid, environ):
     async for redis_client in get_redis():
         existing_sid = await get_sid_by_client_id(client_id, redis_client)
         if existing_sid and existing_sid != sid:
-            # 중복 연결 아이디인 것을 redis에 저장
-            await add_duplicate_connection(sid, redis_client)
+            # 중복 연결 아이디면 기존 연결 끊기
+            if existing_sid:
+                await sio_server.emit(
+                    "SC_DUPLICATE_CONNECTION",
+                    { "message": "Duplicate connection detected." },
+                    to=existing_sid,
+                )
+                await delete_sid_mapping(existing_sid, redis_client)
+                await sio_server.disconnect(existing_sid)
+                print(f"Disconnected OLD SID {existing_sid} for client {client_id}")
         
-        else: # 중복 연결 아이디가 아닌 경우
-            event = asyncio.Event()
+        event = asyncio.Event()
+        await enqueue_connection_request(redis_client, sid, client_id, user_name)
+        await set_sid_mapping(client_id, sid, redis_client)
 
-            await enqueue_connection_request(redis_client, sid, client_id, user_name)
-            await set_sid_mapping(client_id, sid, redis_client)
+        # 이벤트 객체를 전역 딕셔너리에 저장
+        asyncio_event_store[sid] = event
+        print(f"enqueued: sid:{sid}, client_id:{client_id}")
 
-            # 이벤트 객체를 전역 딕셔너리에 저장
-            asyncio_event_store[sid] = event
-            print(f"enqueued: sid:{sid}, client_id:{client_id}")
-
-            # 연결 요청 완료 대기
-            while asyncio_event_store.get(sid):
-                await event.wait()
-                print(f"Event for SID {sid} completed.")
-
-            print(f"Connection completed: sid:{sid}, client_id:{client_id}")
+        # 연결 요청 완료 대기
+        while asyncio_event_store.get(sid):
+            await event.wait()
+            print(f"Event for SID {sid} completed.")
+        print(f"Connection completed: sid:{sid}, client_id:{client_id}")
 
 @sio_server.event
 async def CS_JOIN_ROOM(sid, data):
@@ -130,25 +132,11 @@ async def CS_JOIN_ROOM(sid, data):
         return
 
     async for redis_client in get_redis():
-        # 중복 연결 아이디인지 확인
-        duplicate_sid = await get_duplicate_connections(sid, redis_client)
-
-        if duplicate_sid:
-            await sio_server.emit(
-                "SC_DUPLICATE_CONNECTION",
-                { "message": "Duplicate connection detected." },
-                to=sid,
-            )
-            await remove_duplicate_connection(sid, redis_client)
-            await sio_server.disconnect(sid)
-            print(f"Disconnected NEW SID {sid} for client {client_id}")
-
-        else:
-            # 클라이언트 정보 업데이트 room_type, room_id
-            await set_client_info(client_id, {"room_type": room_type, "room_id": room_id}, redis_client)
-
-            # 방에 클라이언트 추가
-            await add_to_room(room_id, client_id, redis_client)
+        # 클라이언트 정보 업데이트 room_type, room_id
+        await set_client_info(client_id, {"room_type": room_type, "room_id": room_id}, redis_client)
+        
+        # 방에 클라이언트 추가
+        await add_to_room(room_id, client_id, redis_client)
 
 
 @sio_server.event
