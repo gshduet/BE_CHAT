@@ -173,6 +173,7 @@ async def CS_JOIN_ROOM(sid, data):
                     {"client_id": client_id},
                     to=client_sid,
                 )
+                return
 
 
 
@@ -299,19 +300,13 @@ async def CS_PICTURE_INFO(sid, data):
         return
     
     client_id = data.get("client_id")
+    room_id = data.get("room_id")
 
-    if not client_id:
+    if not client_id or not room_id:
         print("Error: Missing required data5")
         return
 
     async for redis_client in get_redis():
-        # 클라이언트가 속한 room_id 가져오기
-        room_id = client_info_store[client_id].room_id
-        user_name = client_info_store[client_id].user_name
-
-
-        print(f"{user_name} sent CS_PICTURE_INFO to room {room_id}")
-
         # 방에 있는 모든 클라이언트에게 SC_PICTURE_INFO 전송
         for client in await get_room_clients(room_id, redis_client):
             if client == client_id:
@@ -322,7 +317,6 @@ async def CS_PICTURE_INFO(sid, data):
                 "SC_PICTURE_INFO",
                 {
                     "client_id": client_id,
-                    "user_name": user_name,
                     "picture": data.get("picture"),
                 },
                 to=client_sid,
