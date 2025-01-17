@@ -160,9 +160,20 @@ async def CS_JOIN_ROOM(sid, data):
         # 클라이언트 정보 업데이트 room_type, room_id
         client_info_store[client_id].room_type = room_type
         client_info_store[client_id].room_id = room_id
-        
+
         # 방에 클라이언트 추가
         await add_to_room(room_id, client_id, redis_client)
+
+        # room_type이 meeting 이면 해당방의 첫번째 유저에게 SC_GET_PICTURE 를 보냄
+        if room_type == "meeting":
+            clients = await get_room_clients(room_id, redis_client)
+            if clients[0] == client_id:
+                await sio_server.emit(
+                    "SC_GET_PICTURE",
+                    { },
+                    to=client_info_store[client_id].sid,
+                )
+
 
 
 @sio_server.event
