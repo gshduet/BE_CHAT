@@ -14,7 +14,8 @@ from core.redis import (
     dequeue_connection_request,
 )
 
-from core.movement import update_movement, handle_view_list_update
+from core.movement import update_movement, handle_view_list_update, sector_manager
+
 
 sio_server = socketio.AsyncServer(
     async_mode="asgi",
@@ -43,6 +44,9 @@ asyncio_event_store = {}
 
 # 클라이언트 정보를 저장할 전역 딕셔너리
 client_info_store = {}
+
+# 클라이언트의 view list
+client_view_list = {}
 
 # sid로 클라이언트 아이디 찾기
 def find_key_by_sid(sid_to_find):
@@ -337,12 +341,14 @@ async def CS_MOVEMENT_INFO(sid, data):
         sid=sid,
         data=data,
         emit_callback=emit_to_client,
-        client_info_store=client_info_store
+        client_info_store=client_info_store,
+        client_view_list=client_view_list
     )
     await update_movement(
         sid=sid,
         data=data,
-        emit_callback=emit_to_client
+        emit_callback=emit_to_client,
+        client_info_store=client_info_store
     )
 
 async def emit_to_client(target_client, packet):
@@ -367,7 +373,7 @@ async def disconnect(sid):
 
             print(f"watching {client_id} for reconnection")
 
-             # 클라이언트 정보 삭제
+            # 클라이언트 정보 삭제
             await remove_from_room(room_id, client_id, redis_client)
 
             # 방에 있는 모든 클라이언트에게 퇴장 정보 전송
@@ -385,7 +391,7 @@ async def disconnect(sid):
                         {"client_id": client_id},
                         to=client_sid,
                     )
-            
+
             disconnected_client_data = {
                 "client_id": client_id,
                 "user_name": client_info_store[client_id].user_name,
@@ -397,5 +403,20 @@ async def disconnect(sid):
             await set_disconnected_client(client_id, disconnected_client_data, redis_client)
             client_info_store.pop(client_id)
 
+            # client_view_list에서 클라이언트 삭제
+            if client_id in client_view_list:
+                client_view_list.pop(client_id)
+
+            # client_view_list 값에서 클라이언트 제거
+            for key, value in client_view_list.items():
+                if client_id in value:
+                    value.remove(client_id)
+
+            # 섹터에서 클라이언트 제거
+            sector_manager.remove_client_from_sector(client_id)
+
         except Exception as e:
             print(f"Disconnect handler error: {e}")
+
+
+

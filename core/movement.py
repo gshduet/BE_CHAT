@@ -28,18 +28,23 @@ class SectorManager:
                 nearby_sector = f"{x // self.sector_size + offset_x}:{y // self.sector_size + offset_y}"
                 nearby.update(self.sectors.get(nearby_sector, []))
         return list(nearby)
+    
+    # 섹터에서 클라이언트 제거
+    def remove_client_from_sector(self, client_id: str):
+        for sector_key, clients in self.sectors.items():
+            if client_id in clients:
+                clients.remove(client_id)
+                if not clients:  # 섹터가 비어 있으면 삭제
+                    del self.sectors[sector_key]
+                return
 
 # SectorManager 인스턴스 생성
-# 임시 섹터 크기 100으로 설정
 sector_manager = SectorManager(sector_size=300)
-
-# 클라이언트의 view list
-client_view_list = {}
 
 # 클라이언트의 이동을 처리하는 함수
 # 클라이언트의 새 위치를 업데이트
 # 섹터 정보를 기반으로 인접 클라이언트에게 이동 정보를 전송
-async def update_movement(sid, data, emit_callback):
+async def update_movement(sid, data, emit_callback, client_info_store):
     client_id = data.get("client_id")
     if not client_id:
         print("Client ID missing")
@@ -62,6 +67,9 @@ async def update_movement(sid, data, emit_callback):
         if other_client == client_id:
             continue
 
+        if other_client not in client_info_store:
+            continue
+
         await emit_callback(other_client, {
             "client_id": client_id,
             "position_x": int(x),
@@ -70,11 +78,9 @@ async def update_movement(sid, data, emit_callback):
             "user_name": user_name,
         })
 
-    # print(f"Client {client_info.get('user_name')} move to ({x}, {y})")
-
 # 클라이언트의 시야 목록을 업데이트하는 함수
 # 새롭게 보이는 클라이언트를 추가하고 보이지 않게 된 클라이언트를 제거
-async def handle_view_list_update(sid, data, emit_callback, client_info_store):
+async def handle_view_list_update(sid, data, emit_callback, client_info_store, client_view_list):
     client_id = data.get("client_id")
     if not client_id:
         print("Client ID missing")
@@ -111,3 +117,4 @@ async def handle_view_list_update(sid, data, emit_callback, client_info_store):
 
     # 시야 목록 업데이트
     client_view_list[client_id] = new_view_list
+
