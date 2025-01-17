@@ -115,22 +115,22 @@ async def connect(sid, environ):
     
     # 해당 client_id가 매핑된 sid가 있는지 확인
     async for redis_client in get_redis():
-        if client_in_client_data_store(client_id):
+        if client_id in client_info_store:
             # 중복 연결 아이디면 기존 연결 끊기
-            await sio_server.emit(
-                "SC_DUPLICATE_CONNECTION",
-                { "message": "Duplicate connection detected." },
-                to=client_info_store[client_id].sid,
-            )
+            old_sid = client_info_store[client_id].sid
+            if old_sid:
+                await sio_server.emit(
+                    "SC_DUPLICATE_CONNECTION",
+                    {"message": "Duplicate connection detected."},
+                    to=old_sid,
+                )
             client_info_store[client_id].sid = sid
-            await sio_server.disconnect(client_info_store[client_id].sid)
-            print(f"Disconnected OLD SID {client_info_store[client_id].sid} for client {client_id}")
+            await sio_server.disconnect(old_sid)
         else:
             client_info_store[client_id] = client_info(sid)
             
         event = asyncio.Event()
         await enqueue_connection_request(redis_client, sid, client_id, user_name)
-
 
         # 이벤트 객체를 전역 딕셔너리에 저장
         asyncio_event_store[sid] = event
@@ -319,26 +319,40 @@ async def CS_MOVEMENT_INFO(sid, data):
     if not isinstance(data, dict):
         print("Error: Invalid data format")
         return
-    
-    client_id = data.get("client_id")
 
+    client_id = data.get("client_id")
     if not client_id:
-        print("Error: Missing required data6")
+        print("Error: Missing required data")
         return
-    
+
+    if client_id not in client_info_store:
+        print(f"Error: Client {client_id} not found in client_info_store")
+        return
+
     client_info_store[client_id].position_x = data.get("position_x")
     client_info_store[client_id].position_y = data.get("position_y")
     client_info_store[client_id].direction = data.get("direction")
 
-    async for redis_client in get_redis():
-        await update_movement(sid, data, redis_client, emit_callback=emit_to_client)
-        await handle_view_list_update(sid, data, redis_client, emit_callback=emit_to_client)
+    await handle_view_list_update(
+        sid=sid,
+        data=data,
+        emit_callback=emit_to_client,
+        client_info_store=client_info_store
+    )
+    await update_movement(
+        sid=sid,
+        data=data,
+        emit_callback=emit_to_client
+    )
 
 async def emit_to_client(target_client, packet):
-    async for redis_client in get_redis():
-        client_sid = client_info_store[target_client].sid
-        if client_sid:
-            await sio_server.emit("SC_MOVEMENT_INFO", packet, to=client_sid)
+    if target_client not in client_info_store:
+        print(f"Error: Target client {target_client} not found in client_info_store")
+        return
+
+    client_sid = client_info_store[target_client].sid
+    if client_sid:
+        await sio_server.emit("SC_MOVEMENT_INFO", packet, to=client_sid)
 
 @sio_server.event
 async def disconnect(sid):
