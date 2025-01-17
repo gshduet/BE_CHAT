@@ -161,8 +161,7 @@ async def CS_JOIN_ROOM(sid, data):
         client_info_store[client_id].room_type = room_type
         client_info_store[client_id].room_id = room_id
 
-         # 방에 클라이언트 추가
-        await add_to_room(room_id, client_id, redis_client)
+
 
         # room_type이 meeting 이면 해당방의 첫번째 유저에게 SC_GET_PICTURE 를 보냄
         if room_type == "meeting":
@@ -173,7 +172,11 @@ async def CS_JOIN_ROOM(sid, data):
                     {"client_id": client_id},
                     to=client_sid,
                 )
-                return
+
+                
+        # 방에 클라이언트 추가
+        await add_to_room(room_id, client_id, redis_client)
+
 
 
 
